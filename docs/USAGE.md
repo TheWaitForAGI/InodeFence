@@ -282,8 +282,8 @@ TAR의 내용은 보내지 않습니다(경로와 기록된 SHA-256만). 값은 
 | 페이지 | 보이는 것 |
 | --- | --- |
 | Overview | 엔진 상태(`doctor` 요약), 실행 목록, 최근 위반 후보, 실행별 상세(`#/run/<id>`) |
-| Targets | 등록된 대상과 지원 범위, 준비된 이미지 묶음 |
-| Experiments | 탐색과 verify 실행 |
+| Targets | 등록된 대상과 지원 범위, 준비된 이미지 묶음, 대상별 마지막 verify 결과(결과 파일의 수정 시각 기준. 기록된 실행 시각이 아님) |
+| Experiments | 탐색과 verify 실행: 상태 필터(running·stalled·finished·no result), 실행별 진행 막대(실행 수/예산. 시작·끝 시각은 기록되지 않아 시간축은 없음), 행을 고르면 상세(진행, 종료 상태, 후보) |
 | Findings | 위반 후보(C0·C1·C2, 분류, replay 결론) |
 | Replay | 재실행 기록(판정된 회차 기준의 같은 계약 수와 결론) |
 | Artifacts | 실행 하나의 파일·폴더 목록(메타데이터만; 심볼릭 링크는 따라가지 않고 링크로 표시) |
@@ -299,6 +299,54 @@ wheel로만 설치하면(클론 없음, `INODEFENCE_HOME` 없음) 대시보드�
 
 종료 코드: Ctrl-C로 멈추면 0. FastAPI·uvicorn이 없거나(설치 안내 한 줄) 서버를 시작하지 못하면(포트 사용 중 등, 한 줄)
 3입니다.
+
+## 시연 순서: 여섯 장면을 새 화면으로
+
+소개 영상의 여섯 실행 장면(`paper/deliverables/demo-video-script.md`의 `rec01`~`rec06`)을 지금 CLI로 다시 보는 순서입니다.
+명령은 지금 구문 그대로입니다. 화면은 선택 설치 `ui`(Rich)가 있고 대화형 터미널일 때의 모습이며, 파이프로 받으면
+0.2.0과 같은 글자입니다. 각 장면의 **확인** 줄은 이 안내서를 쓸 때 실제로 본 것만 적습니다. "합성"은 저장된 계약
+픽스처나 합성 진행 값으로 화면만 그려 본 것이고, 실제 추출기를 돌려 본 것이 아닙니다. 아래 결과(판정, 위반 수)는
+실행마다 다를 수 있으며, 여기 적은 화면 구성이 그 값을 보장하지 않습니다.
+
+1. **환경 점검과 대상 목록.** `inodefence doctor`, `inodefence targets`
+   - 화면: 브랜드 머리줄, 상태 카드(OK·WARN·FAIL·UNKNOWN), 구획(Environment·Storage·Docker·Development), 끝의 결과
+     패널과 다음 명령. `targets`는 능력 카드와 대상 표입니다.
+   - 필요한 것: Docker(이미지 칸이 채워지려면 준비된 이미지).
+   - 확인: 실제 호스트의 pty에서 두 명령 모두 종료 0. 화면 구성은 가짜 Docker 응답으로도 확인.
+2. **node-tar 검사와 두 버전 대조.**
+   `inodefence verify --target node-tar --version 7.5.23 --auto-prepare --out out/verify-nt`
+   - 화면: 드라이버의 기존 줄 뒤에 이 실행이 쓴 셀의 결과 화면(판정, 위반 n/m, 케이스 표의 입력 SHA-256과 C0·C1·C2,
+     증거 경로)이 붙습니다.
+   - 두 버전을 나란히 보려면 다른 버전으로 한 번 더 verify한 뒤
+     `inodefence compare <A의 result.json> <B의 result.json>`. 양쪽에 기록된 입력 SHA-256이 같은 케이스만 "same"입니다.
+   - 필요한 것: Docker와 이미지(실제 실행).
+   - 확인: 합성(계약 픽스처와 그 사본). 실제 verify 뒤의 화면은 이 안내서에서 보지 않았습니다.
+3. **탐색.** `inodefence explore --target node-tar --version 7.5.23 --budget 40 --seed 123 --auto-prepare --out out/explore-nt`
+   - 화면: 실행 막대(실행 수/예산), 카드(위반, 미판정, 처리량, 경과), 종료 상태 막대와 C0·C1·C2, ETA(추정)와 런처
+     단계(런처 로그에서 읽음) 한 줄. 끝나면 마지막 화면, 결과 패널, 기존 마지막 줄이 남습니다.
+   - python-tarfile·decompress·oras-go는 실행 중 수치가 없어(`?`) 막대 없이 단계만 보입니다.
+   - 필요한 것: Docker와 이미지(실제 실행, 수 분).
+   - 확인: 합성 진행 값으로 그린 중간·끝 화면. 실제 탐색 중의 화면은 이 안내서에서 보지 않았습니다.
+4. **상태와 요약.** `inodefence status out/explore-nt`,
+   `inodefence summary out/explore-nt/target-explore/<실행>-result/result.json`
+   - 화면: `status`는 판정 카드와 결과 표, `summary`는 같은 마크다운을 그린 것. 원래 글자는 `--plain`.
+   - 필요한 것: 장면 3의 결과 폴더.
+   - 확인: 합성(계약 픽스처로 만든 결과 폴더).
+5. **위반 케이스 재실행.** 탐색 결과의 위반 케이스 폴더 하나를 `inodefence replay <케이스 폴더> --rounds 3`
+   (케이스의 `case.json`에 그 명령이 그대로 있습니다. node-tar 탐색이면 끝 화면의 결과 패널에도 그 실행의
+   케이스 경로가 나옵니다).
+   - 화면: 회차 표, 판정된 회차 가운데 같은 계약의 수(판정되지 않은 회차는 일치로 세지 않음), 결론 칩.
+   - 필요한 것: **탐색이 위반을 찾은 실제 실행.** 저장소에는 결정적으로 위반을 내는 자료가 없고, 영상의 node-tar 탐색은
+     위반이 없었습니다(그래서 영상의 장면 4-3은 거부 화면). 위반 케이스 없이 `replay`를 부르면 실행 전에 거부됩니다.
+   - 확인: 합성 재실행 기록(`tests/app_synthetic.py`). 실제 위반 케이스의 3회 재실행 화면은 보지 않았습니다.
+6. **같은 폴더를 세 화면으로.** 위 폴더들을 한 번에:
+   `inodefence tui out/explore-nt out/verify-nt`, `inodefence dashboard out/explore-nt out/verify-nt`(브라우저에서
+   `http://127.0.0.1:8765`)
+   - 화면: 같은 읽기 계층이라 실행 목록, 후보, 재실행 결론이 CLI와 같은 값입니다.
+   - 필요한 것: 선택 설치 `tui`·`web`, 장면 2~5의 폴더.
+   - 확인: 이 호스트에서 `tui`를 pty로 열어 다섯 탭과 종료 0, `dashboard`를 띄워 페이지·정적 파일·API가 200,
+     포트 충돌 시 종료 3, Ctrl-C에 종료 0. 둘 다 이 호스트의 기본 출력 폴더(실행 없음)로 본 것입니다. 웹 여섯 페이지는
+     검토자(QA)가 열어 페이지 오류가 없음을 확인했습니다(PR #549 코멘트).
 
 ## 실행 중 터미널 진행 표시
 

@@ -140,13 +140,13 @@ wheel로 설치했다면 `INODEFENCE_HOME`(환경 변수 또는 아래 설정 �
   | 대상·버전 | 모드 | 실행 성공 | 유효 추출 | 미판정 | 위반 | replay | 지원 수준 |
   | --- | --- | --- | --- | --- | --- | --- | --- |
   | node-tar 7.5.23 | verify | 5/5 | 0/5 (전부 declined) | 0 | 0 | — | 고정 입력 회귀 (exploratory 버전) |
-  | node-tar 7.5.23 | explore 20 | 20/20 | 17/20 (rejected 3) | 0 | 0 | 지원(케이스 폴더), 실제 위반 E2E 미검증 | 탐색 |
+  | node-tar 7.5.23 | explore 20 | 20/20 | 17/20 (rejected 3) | 0 | 0 | 지원(케이스 폴더), 실제 위반 케이스 재실행 기록 없음 | 탐색 |
   | python-tarfile 3.12.16 `data` | verify | 5/5 | 0/5 (전부 declined) | 0 | 0 | — | 고정 입력 회귀 |
-  | python-tarfile 3.12.16 `data` | explore 20 | 20/20 | 12/20 (failed 5, rejected 3) | 0 | 0 | 지원(결과 폴더 `--case`), 실제 위반 E2E 미검증 | 탐색 |
+  | python-tarfile 3.12.16 `data` | explore 20 | 20/20 | 12/20 (failed 5, rejected 3) | 0 | 0 | 지원(결과 폴더 `--case`), 실제 위반 케이스 재실행 기록 없음 | 탐색 |
   | decompress `@xhmikosr/decompress@11.1.4` | verify | 5/5 | 0/5 (전부 declined) | 0 | 0 | — | 고정 입력 회귀 |
-  | decompress `@xhmikosr/decompress@11.1.4` | explore 20 | 20/20 | 11/20 (rejected 9) | 0 | 0 | 지원(결과 폴더 `--case`), 실제 위반 E2E 미검증 | 탐색 |
+  | decompress `@xhmikosr/decompress@11.1.4` | explore 20 | 20/20 | 11/20 (rejected 9) | 0 | 0 | 지원(결과 폴더 `--case`), 실제 위반 케이스 재실행 기록 없음 | 탐색 |
   | oras-go 2.6.2 | verify | 6/6 | 0/6 (전부 declined) | 0 | 0 | — | 고정 입력 회귀 |
-  | oras-go 2.6.2 | explore 20 | 20/20 | **0/20** (전부 rejected, "추출 성공 0건" 경고) | 0 | 0 | 지원(결과 폴더 `--case`), 실제 위반 E2E 미검증 | 이 행은 `f108e36` 측정값(이름을 `d/` 아래로 옮기기 전). 옮긴 뒤의 값은 [한계와 주의](#한계와-주의)의 oras-go 항목 |
+  | oras-go 2.6.2 | explore 20 | 20/20 | **0/20** (전부 rejected, "추출 성공 0건" 경고) | 0 | 0 | 지원(결과 폴더 `--case`), 실제 위반 케이스 재실행 기록 없음 | 이 행은 `f108e36` 측정값(이름을 `d/` 아래로 옮기기 전). 옮긴 뒤의 값은 [한계와 주의](#한계와-주의)의 oras-go 항목 |
 
   - python-tarfile의 failed 5건은 worker가 보고한 예외(IsADirectoryError 3, FileExistsError 1, KeyError 1)가 종료
     상태와 일치해 판정을 유지했습니다(D1 편차, 아래 판정 규칙).
@@ -571,11 +571,12 @@ make target-run TARGET=node-tar TARGET_VERSIONS="7.5.2 7.5.3" AUTO_PREPARE=1 PYT
   `stage=UNKNOWN`(어디서 멈췄는지 파일로는 알 수 없음)으로 진단하고 역시 종료 2입니다. python-tarfile에서 종료 3으로
   남은 경우는 둘입니다: 루프 보고서에 단계가 하나도 없음, 보고서가 다른 runtime·extraction filter의 것. 이전
   python-tarfile은 루프 abort와 보고서 없음을 `SETUP` 3으로, 완주 보고서 + 런처 실패를 PASS로 보고했습니다.
-- **decompress·oras-go·python-tarfile 런처의 정리:** 이 세 셸 런처는 컨트롤러·볼륨 제거 실패를 종료 코드에
-  반영하지 않고, 소유 라벨도 붙이지 않으며, docker 호출에 시간 제한이 없습니다. 그래서 정리 상태가 불명확해도
-  실행이 성공으로 끝날 수 있습니다. 제품 계층은 실행이 끝날 때마다 그 실행의 컨트롤러·볼륨 이름이 아직 있는지
-  조회해 `RUNTIME DIAGNOSTIC WARN leftover-resources`로 알리고(`inodefence doctor`도 같은 이름으로 조회),
-  거기까지만 합니다. 지우지 않으며, 런처 수정은 격리 인접 변경이라 방향만 승인됐고 실행은 보류 중입니다(2026-11-16 결정).
+- **decompress·oras-go·python-tarfile 런처의 정리:** 이 세 셸 런처는 탐색 본체와 로컬 CLI 조회를 뺀 모든 Docker
+  데몬 호출에 시간 제한을 둡니다(조회 30초, 생성 60초, 정리 60초, 빌드 1800초 등). 컨트롤러와 볼륨에는 실행별 소유
+  label이 붙고, 정리는 그 label이 있는 것만 지웁니다. 정리 실패·시간 초과·제거 미확인이면 성공이던 실행을 런처 종료
+  125로 바꾸고, 제품은 ERROR(종료 2)로 끝내며 결과를 발행하지 않습니다. 탐색 본체에는 시간 상한이 없고, node-tar
+  런처는 기존 방식 그대로입니다. 제품 계층은 실행이 끝날 때마다 그 실행의 컨트롤러·볼륨 이름이 아직 있는지
+  조회해 `RUNTIME DIAGNOSTIC WARN leftover-resources`로 알립니다(`inodefence doctor`도 같은 이름으로 조회).
 - **미공개로 보이는 문제를 찾으면 공개 저장소에 올리기 전에 해당 추출기의 유지보수자에게 먼저
   알립니다**(책임 있는 공개). 위반 입력과 결과는 저장소 밖 출력 폴더에만 두고, 위반 입력 자체를
   커밋하지 않습니다.

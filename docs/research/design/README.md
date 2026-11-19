@@ -42,7 +42,7 @@ Layer 2 공통 데이터 모델, Layer 3 최소 pipeline, Layer 4 Generic Mutati
 [protected-component addressing v1](mutation-protected-components-v1.md),
 Layer 5 Feedback / Corpus 및 bounded campaign이 구현됐다. Contained Node의 tiny benign
 configured campaign도 검증했다. Snapshot 관찰 범위와 runtime/kernel trust 한계는 유지하며,
-EXP-0 등록 실행과 hazard 파일럿은 수행했다. 연구 효과 검증(EXP-3·EXP-2) 결과는 봉인 해제 뒤 기입한다.
+EXP-0 등록 실행과 hazard 파일럿은 수행했다. EXP-3 train과 EXP-2 holdout도 끝났고, H-A 확증 판정은 비기각(분리 실패, HR 2 배제)이다(#487): S-u는 R·D 어느 쪽과도 구분되지 않았고, 위험률 비 2 이상의 가속은 구간으로 배제됐다(결함 깊이 1 벤치마크). 판정 문장은 [주장 목록](../../../paper/sections/claims-evidence-status-v1.md) C-HA·S-HOLDOUT 행이 기준이다.
 Native v2 replacement 실패 이후 확인된 multi-operation namespace rebinding은
 [별도 v3 제안](entry-effect-rebinding-v3-proposal.md)에만 정의돼 있으며
 **BLOCKED_FOR_REVIEW / NOT_IMPLEMENTED**다. 이는 현재 합의된 v2 계약이 아니다.

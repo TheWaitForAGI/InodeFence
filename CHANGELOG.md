@@ -71,7 +71,7 @@
 
 첫 릴리스다. 아래 내용은 `main`에 있다(착지 [#484](https://github.com/TheWaitForAGI/InodeFence/pull/484), 그 뒤
 [#489](https://github.com/TheWaitForAGI/InodeFence/pull/489)·[#506](https://github.com/TheWaitForAGI/InodeFence/pull/506)).
-태그 `v0.2.0`와 GitHub Release는 지웅이 만든다. 범위와 릴리스 조건은 [D049](docs/DECISIONS.md)에 있고, 조건 6개의 근거는 다음과 같다.
+태그 `v0.2.0`(커밋 `ba6fa6f`)와 GitHub Release는 2026-11-18에 만들어졌다. 범위와 릴리스 조건은 [D049](docs/DECISIONS.md)에 있고, 조건 6개의 근거는 다음과 같다.
 
 | 조건 | 근거 |
 | --- | --- |
@@ -164,10 +164,10 @@
 
 | 대상 | 바꾸는 축 | 이미지 자동 준비(`--auto-prepare`) 범위 | 탐색 | replay |
 | --- | --- | --- | --- | --- |
-| node-tar | 대상 버전 | 커밋된 lock이 있는 10개(7.0.1·7.1.0·7.2.0·7.3.0·7.4.4·7.5.2·7.5.3·7.5.6·7.5.7·7.5.8). 그 밖의 정확한 버전·`latest`는 exploratory | 지원 | 지원(실제 위반 E2E 미검증) |
-| python-tarfile | 추출 필터 또는 런타임 버전(한 번에 하나) | 정확한 `X.Y.Z`의 공식 `python:X.Y.Z-slim` | 지원(`fully_trusted` 필터는 탐색 보류) | 지원: 결과 폴더 `--case`(실제 위반 E2E 미검증) |
-| decompress | 패키지와 버전(`decompress@4.2.1` 원본, `@xhmikosr/decompress@11.1.4` fork) | 두 패키지 버전 | 지원 | 지원: 결과 폴더 `--case`(실제 위반 E2E 미검증) |
-| oras-go | 대상 버전 | 2.6.1·2.6.2 | 입력 이름을 `d/` 아래로 옮겨 보냄(아래 알려진 제한) | 지원: 결과 폴더 `--case`(실제 위반 E2E 미검증) |
+| node-tar | 대상 버전 | 커밋된 lock이 있는 10개(7.0.1·7.1.0·7.2.0·7.3.0·7.4.4·7.5.2·7.5.3·7.5.6·7.5.7·7.5.8). 그 밖의 정확한 버전·`latest`는 exploratory | 지원 | 지원(실제 위반 케이스 재실행 기록 없음) |
+| python-tarfile | 추출 필터 또는 런타임 버전(한 번에 하나) | 정확한 `X.Y.Z`의 공식 `python:X.Y.Z-slim` | 지원(`fully_trusted` 필터는 탐색 보류) | 지원: 결과 폴더 `--case`(실제 위반 케이스 재실행 기록 없음) |
+| decompress | 패키지와 버전(`decompress@4.2.1` 원본, `@xhmikosr/decompress@11.1.4` fork) | 두 패키지 버전 | 지원 | 지원: 결과 폴더 `--case`(실제 위반 케이스 재실행은 `decompress@4.2.1` C0 케이스 하나: 60회 중 51회 같은 C0 위반, 3/3은 그 가운데 연속 세 번) |
+| oras-go | 대상 버전 | 2.6.1·2.6.2 | 입력 이름을 `d/` 아래로 옮겨 보냄(아래 알려진 제한) | 지원: 결과 폴더 `--case`(실제 위반 케이스 재실행 기록 없음) |
 
 - node-tar를 뺀 세 대상은 표에 없는 버전을 거부한다(종료 3). node-tar에서 커밋된 lock이 없는 정확한 버전이나 `latest`는
   **exploratory** 셀이 된다: npm registry에서 그 버전의 lock을 받아 점검한 뒤 커밋된 레시피로
@@ -272,13 +272,13 @@ RC(#457) 이후 스택에서 의도적으로 바뀐 동작:
   상대 경로 엔트리 이름 앞에 `d/`를 붙인다. 엔트리 이름으로 추출 영역을 벗어나려면 `../`가 하나 더 필요하다. 확인은
   2.6.2에서 demo run 1회(추출 11/20, 위반 0)뿐이고 2.6.1은 실행하지 않았다. 연구 쪽 실행 경로는 옵션이 꺼진 채로
   이전과 같다. 컨트롤러는 failed·timed_out 실행의 위반 입력을 저장하지 않는다(판정은 ERROR로 닫힘).
-- **replay**는 네 대상 모두 지원하지만, 실제 위반 케이스의 Docker 재현 E2E는 검증하지 않았다(합성 사례 기능 테스트만).
-  네 대상 각각의 실제 실행은 0.2.0 릴리스 조건이다(D049).
+- **replay**는 네 대상 모두 지원한다. 위반이 없는 케이스는 네 대상 모두 3회씩 다시 돌려 원래 판정과 3/3 일치했다.
+  실제 위반 케이스 재실행은 decompress@4.2.1 C0 위반 케이스 하나만 기록이 있다: 같은 입력으로 60회 중 51회 같은 C0 위반, 9회는 추출기 거부. 3/3은 그 가운데 연속 세 번이다. 나머지 세 대상은 탐색에서 위반 케이스가 없어 기록이 없다.
 - **탐색 재개(resume)는 없다.** 멈춘 탐색을 중간부터 이어 돌릴 수 없다.
 - **표시 문제:** `live/`와 결과가 함께 있는 폴더에서 `status`가 "추출 성공 0건" 경고를 두 번 출력한다(판정·종료 코드 영향
   없음).
-- **Runtime 계층의 한계(#466).** decompress·oras-go·python-tarfile 셸 런처는 정리 실패를 종료 코드에 반영하지 않고 Docker
-  호출에 시간 제한이 없다(제품 계층은 사후 조회로 "정리 불명"을 경고). 런처 전체 실행에 시간 제한이 없다. Ctrl-C 때
+- **Runtime 계층의 한계(#466).** decompress·oras-go·python-tarfile 셸 런처의 Docker 호출 시간 제한과 정리 실패 125는
+  위 「변경된 동작과 호환성」대로다. 탐색 본체(런처 전체 실행)에는 시간 상한이 없고, node-tar 런처는 기존 방식 그대로다. Ctrl-C 때
   컨트롤러 쪽 `BrokenPipeError` traceback이 그대로 나온다. decompress의 개발용 직접 진입점은 Runtime 세션 없이 실행된다.
   python-tarfile의 "loop report has no steps"·"different runtime or filter"는 아직 종료 3이다.
 - **환경.** 호스트에 Python 3.12가 필요하다. macOS 기본 `python3`(3.9)으로 `make`를 부르면 실행 전 점검 없이

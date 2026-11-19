@@ -666,8 +666,21 @@ def read_result(path: Path, ref: RunRef | None = None) -> RunSummary:
     try:
         result = from_json_dict(known)
     except (TargetResultError, TypeError, ValueError, KeyError) as refused:
+        ref = _ref_with_axes(ref, data)
         return _summary_as_stored(data, path, ref, extras, f"strict reader refused: {refused}")
-    return _summary_from_result(result, data, path, ref, extras)
+    return _summary_from_result(result, data, path, _ref_with_axes(ref, data), extras)
+
+
+def _ref_with_axes(ref: RunRef | None, data: Mapping[str, Any]) -> RunRef | None:
+    """``ref`` with the result's own target and version (``axes.target_version`` or, for
+    python-tarfile, ``axes.runtime_version``); values the file does not hold stay ``None``."""
+    if ref is None:
+        return None
+    axes = _map(data.get("axes"))
+    version = _str(axes.get("target_version")) or _str(axes.get("runtime_version"))
+    return replace(
+        ref, target=_str(data.get("target")) or ref.target, version=version or ref.version
+    )
 
 
 def recheck_inputs(summary: RunSummary) -> Integrity:

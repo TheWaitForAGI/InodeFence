@@ -297,3 +297,24 @@ def test_the_launcher_step_is_not_attached_to_an_ended_run(tmp_path: Path) -> No
     syn.live_run(out, finished, [syn.step(0)], close="finished")
     progress = runs.read_run(_explore_ref(out, finished)).progress
     assert progress is not None and progress.launcher_step is None
+
+
+def test_read_verify_and_read_result_name_target_and_version(tmp_path: Path) -> None:
+    verify = tmp_path / f"{syn.SYNTHETIC}-verify"
+    syn.write_result(verify / "node-tar-7.5.2", syn.result(mode=syn.ResultMode.FIXTURE_REGRESSION))
+    py = syn.result(target="python-tarfile", mode=syn.ResultMode.FIXTURE_REGRESSION)
+    data = py.to_json_dict()
+    data["axes"] = {
+        "target_version": None,
+        "runtime_version": "3.12.7",
+        "extraction_filter": "data",
+    }
+    syn.write_result(verify / "python-tarfile-3.12.7-data", py, text=json.dumps(data))
+    cells = {s.ref.run_id: s.ref for s in runs.read_verify(verify) if s.ref}
+    assert (cells["node-tar-7.5.2"].target, cells["node-tar-7.5.2"].version) == (
+        "node-tar",
+        "7.5.2",
+    )
+    python = cells["python-tarfile-3.12.7-data"]
+    assert (python.target, python.version) == ("python-tarfile", "3.12.7")
+    assert runs.read_result(verify / "node-tar-7.5.2" / "result.json").ref is None  # no ref given

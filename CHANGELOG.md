@@ -41,7 +41,8 @@
 - `inodefence compare A B`: 두 결과를 케이스별로 나란히 보여 준다. 양쪽에 기록된 입력 SHA-256이 같을 때만
   "same", 엄격한 읽기가 거절한 결과는 "as stored"와 이유를 붙인다. `verify`·`replay`는 대화형 터미널에서만 드라이버의
   줄 뒤에 이 실행이 쓴 결과의 화면을 덧붙이고, 파이프·파일 출력은 그대로다. [USAGE](docs/USAGE.md#두-결과-대조compare)
-- 화면용 선택 설치 `ui`(Rich)·`tui`(Textual)·`web`(FastAPI·uvicorn)·`all`. `ui`가 있으면 `doctor`·`targets`를
+- 화면용 선택 설치 `ui`(Rich)·`tui`(Textual)·`web`(FastAPI·uvicorn)·`all`. 하한은 시험한 버전이다(rich 15.0,
+  textual 8.2, fastapi 0.165, uvicorn 0.54). `ui`가 있으면 `doctor`·`targets`를
   터미널에서 Rich로 그린다(테두리 없는 표, 상태에만 색). 파이프·파일·`NO_COLOR`·`TERM=dumb`·Rich 없음에서는 지금의
   화면 그대로이고, `targets --json`·`result.json`·`summary` 마크다운은 Rich 유무와 관계없이 같은 바이트다. 기본 설치의
   의존성은 여전히 없다. [USAGE](docs/USAGE.md#설치)

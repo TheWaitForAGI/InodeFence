@@ -23,20 +23,21 @@ inodefence = "inodefence.cli:main"
 # The command itself needs none of these (dependencies = []). Each interface extra is optional:
 # `ui` draws the terminal with Rich (without it the plain screens are used); `tui` is for
 # `inodefence tui` (Textual); `web` is for `inodefence dashboard` (FastAPI + uvicorn).
-# Lower bounds: the stable releases installable on 2026-11-19 were rich 15.0 and textual 8.2.
-ui = ["rich>=13"]
-tui = ["textual>=8", "rich>=13"]
-web = ["fastapi>=0.110", "uvicorn>=0.29"]
-all = ["rich>=13", "textual>=8", "fastapi>=0.110", "uvicorn>=0.29"]
+# Lower bounds are the versions actually tested (2026-11-19, CI and the review hosts): rich 15.0,
+# textual 8.2, fastapi 0.165, uvicorn 0.54, httpx 0.28. No untested lower bound is declared.
+ui = ["rich>=15.0"]
+tui = ["textual>=8.2", "rich>=15.0"]
+web = ["fastapi>=0.165", "uvicorn>=0.54"]
+all = ["rich>=15.0", "textual>=8.2", "fastapi>=0.165", "uvicorn>=0.54"]
 dev = [
     "pytest>=8",
     "ruff>=0.8",
     "pyright>=1.1.400,<2",
-    "rich>=13",  # so the Rich renderer is tested too (the plain one is tested with Rich blocked)
-    "textual>=8",  # so the TUI tests run in CI instead of skipping
-    "fastapi>=0.110",  # so the web tests run in CI instead of skipping
-    "uvicorn>=0.29",
-    "httpx>=0.27",  # FastAPI's TestClient
+    "rich>=15.0",  # so the Rich renderer is tested too (the plain one is tested with Rich blocked)
+    "textual>=8.2",  # so the TUI tests run in CI instead of skipping
+    "fastapi>=0.165",  # so the web tests run in CI instead of skipping
+    "uvicorn>=0.54",
+    "httpx>=0.28",  # FastAPI's TestClient
 ]
 
 [tool.setuptools.packages.find]

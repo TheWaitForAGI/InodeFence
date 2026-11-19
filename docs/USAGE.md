@@ -23,12 +23,15 @@ inodefence targets          # 추출기와 각 추출기가 지원하는 것(옵
 
 화면을 더 보기 좋게 하는 선택 설치(명령의 동작·종료 코드·기계 출력은 같습니다):
 
-| 선택 | 설치 | 더해지는 것 |
-| --- | --- | --- |
-| `ui` | `pip install -e '.[ui]'` | 터미널 화면을 Rich로 그립니다(`doctor`·`targets`·`compare`·`status`·`summary`, `verify`·`replay` 뒤 결과 화면, `explore` 진행 표시). 없으면 지금의 표준 라이브러리 화면입니다 |
-| `tui` | `pip install -e '.[tui]'` | 터미널 대시보드 `inodefence tui`(Textual). 아래 [터미널 대시보드](#터미널-대시보드tui) |
-| `web` | `pip install -e '.[web]'` | 로컬 웹 대시보드 `inodefence dashboard`(FastAPI·uvicorn). 아래 [웹 대시보드](#웹-대시보드dashboard) |
-| `all` | `pip install -e '.[all]'` | 위의 것 전부 |
+| 선택 | 설치 | 패키지(하한) | 더해지는 것 |
+| --- | --- | --- | --- |
+| `ui` | `pip install -e '.[ui]'` | rich>=15.0 | 터미널 화면을 Rich로 그립니다(`doctor`·`targets`·`compare`·`status`·`summary`, `verify`·`replay` 뒤 결과 화면, `explore` 진행 표시). 없으면 지금의 표준 라이브러리 화면입니다 |
+| `tui` | `pip install -e '.[tui]'` | textual>=8.2, rich>=15.0 | 터미널 대시보드 `inodefence tui`(Textual). 아래 [터미널 대시보드](#터미널-대시보드tui) |
+| `web` | `pip install -e '.[web]'` | fastapi>=0.165, uvicorn>=0.54 | 로컬 웹 대시보드 `inodefence dashboard`(FastAPI·uvicorn). 아래 [웹 대시보드](#웹-대시보드dashboard) |
+| `all` | `pip install -e '.[all]'` | 위 넷 | 위의 것 전부 |
+
+하한은 실제로 시험한 버전입니다(2026-11-19: rich 15.0.0, textual 8.2.8, fastapi 0.165.0, uvicorn 0.54.0, 테스트용
+httpx 0.28.1). 그보다 낮은 버전에서 동작하는지는 확인하지 않았으므로 하한으로 선언하지 않습니다.
 
 Rich는 stdout이 터미널이고 `NO_COLOR`가 없으며 `TERM`이 `dumb`가 아닐 때만 씁니다. 파이프·파일·`NO_COLOR`에서는
 Rich가 설치돼 있어도 표준 라이브러리 화면과 같은 글자가 나가고 색 코드는 없습니다. `targets --json`, `result.json`,

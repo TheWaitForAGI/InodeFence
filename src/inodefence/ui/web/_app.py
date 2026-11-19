@@ -16,6 +16,14 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+# starlette is not an optional package here (fastapi depends on it); only fastapi/uvicorn are
+# imported lazily. fastapi.Request / fastapi.responses.* ARE these starlette types, so importing
+# them at module level keeps FastAPI's annotation resolution working for the route handlers.
+from starlette.concurrency import run_in_threadpool
+from starlette.requests import Request
+from starlette.responses import FileResponse, Response, StreamingResponse
+from starlette.staticfiles import StaticFiles
+
 from inodefence.app import doctor as doctor_app
 from inodefence.app import events as events_app
 from inodefence.app import runs as runs_app
@@ -26,7 +34,7 @@ from . import API_SCHEMA
 from ._ids import RunRegistry, run_id
 from ._serialize import to_jsonable
 
-if TYPE_CHECKING:  # the build_app return annotation only; real imports live inside build_app (lazy)
+if TYPE_CHECKING:  # the FastAPI type for annotations; the class itself is imported in build_app
     from fastapi import FastAPI
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -231,13 +239,11 @@ def build_app(
     extra: tuple[Path, ...],
     repo_root: Path | None,
 ) -> FastAPI:
-    # Imported here, never at module level: no module under inodefence/ui imports fastapi/uvicorn
-    # at module level (tests/test_ui_without_rich.py), and this submodule is loaded only by the
-    # lazy create_app()/run() entry.
-    from fastapi import FastAPI, HTTPException, Request
-    from fastapi.responses import FileResponse, Response, StreamingResponse
-    from fastapi.staticfiles import StaticFiles
-    from starlette.concurrency import run_in_threadpool
+    # fastapi itself is imported here, never at module level: no module under inodefence/ui imports
+    # fastapi/uvicorn at module level (tests/test_ui_without_rich.py), and this submodule is loaded
+    # only by the lazy create_app()/run() entry. Request and the responses come from starlette at
+    # module level so FastAPI can resolve the route handlers' annotations.
+    from fastapi import FastAPI, HTTPException
 
     resolved_roots: tuple[Path, ...] = (
         tuple(runs_app.default_roots()) if roots is None else tuple(Path(r) for r in roots)

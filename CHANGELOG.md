@@ -28,10 +28,13 @@
 `pyproject.toml`의 버전은 이미 `0.2.0`이다.
 
 ### 추가된 사용자 기능
+- `inodefence tui [FOLDER ...] [--refresh 초]`: 이 호스트의 실행 폴더를 읽기 전용으로 보는 터미널 대시보드
+  (Overview·Targets·Campaigns·Findings·Artifacts 탭). 선택 설치 `tui`가 없거나 대화형 터미널이 아니면 한 줄과
+  종료 3. [USAGE](docs/USAGE.md#터미널-대시보드tui)
 - `inodefence compare A B`: 두 결과를 케이스별로 나란히 보여 준다. 양쪽에 기록된 입력 SHA-256이 같을 때만
-  "same", 엄격한 읽기가 거절한 결과는 "as stored"와 이유를 붙인다. `verify`는 대화형 터미널에서만 드라이버의 줄
-  뒤에 이 실행이 쓴 셀의 결과 화면을 덧붙이고, 파이프·파일 출력은 그대로다. [USAGE](docs/USAGE.md#두-결과-대조compare)
-- 화면용 선택 설치 `ui`(Rich)·`all`. `tui`·웹 대시보드 명령은 아직 없다(다음 단계). `ui`가 있으면 `doctor`·`targets`를
+  "same", 엄격한 읽기가 거절한 결과는 "as stored"와 이유를 붙인다. `verify`·`replay`는 대화형 터미널에서만 드라이버의
+  줄 뒤에 이 실행이 쓴 결과의 화면을 덧붙이고, 파이프·파일 출력은 그대로다. [USAGE](docs/USAGE.md#두-결과-대조compare)
+- 화면용 선택 설치 `ui`(Rich)·`tui`(Textual)·`all`. 웹 대시보드 명령은 아직 없다(다음 단계). `ui`가 있으면 `doctor`·`targets`를
   터미널에서 Rich로 그린다(테두리 없는 표, 상태에만 색). 파이프·파일·`NO_COLOR`·`TERM=dumb`·Rich 없음에서는 지금의
   화면 그대로이고, `targets --json`·`result.json`·`summary` 마크다운은 Rich 유무와 관계없이 같은 바이트다. 기본 설치의
   의존성은 여전히 없다. [USAGE](docs/USAGE.md#설치)

@@ -21,10 +21,9 @@ inodefence = "inodefence.cli:main"
 
 [project.optional-dependencies]
 # The command itself needs none of these (dependencies = []). Each interface extra is optional:
-# `ui` draws the terminal with Rich (without it the plain screens are used); `tui` is for the
-# terminal dashboard, which is not in this version yet. A web extra is added together with the
-# web dashboard itself. Lower bounds: the stable releases installable on 2026-11-19 were
-# rich 15.0 and textual 8.2.
+# `ui` draws the terminal with Rich (without it the plain screens are used); `tui` is for
+# `inodefence tui` (Textual). A web extra is added together with the web dashboard command.
+# Lower bounds: the stable releases installable on 2026-11-19 were rich 15.0 and textual 8.2.
 ui = ["rich>=13"]
 tui = ["textual>=8", "rich>=13"]
 all = ["rich>=13", "textual>=8"]

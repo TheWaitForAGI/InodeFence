@@ -156,7 +156,8 @@ def test_newer_campaign_keys_are_read_either_way(tmp_path: Path) -> None:
     data["runs"]["executed"] = 99  # a derived field the strict reader refuses
     refused = runs.read_result(syn.write_result(tmp_path / "m", syn.result(),
                                                 text=json.dumps(data)))  # fmt: skip
-    assert refused.read_state is ReadState.OK and not refused.validated
+    assert refused.read_state is ReadState.UNVALIDATED and not refused.validated
+    assert refused.has_values and refused.verdict is not None  # values, marked
     assert refused.executed == 99 and refused.error and "strict reader" in refused.error
 
 
@@ -234,3 +235,35 @@ def test_discover_refuses_the_repository() -> None:
 )  # fmt: skip
 def test_exit_codes(command: str, code: int, outcome: RunOutcome) -> None:
     assert runs.outcome_from_exit_code(command, code) is outcome
+
+
+def test_a_finished_result_without_a_live_snapshot_leaves_build_invalid_unknown(
+    tmp_path: Path,
+) -> None:
+    out, rid = syn.explore_out(tmp_path), syn.run_id()
+    syn.write_result(
+        out / "target-explore" / f"{rid}-result", syn.result(cases=[syn.case("step-1", False)])
+    )
+    progress = runs.read_run(_explore_ref(out, rid)).progress
+    assert progress is not None and progress.source is Source.RESULT
+    assert progress.build_invalid is None  # not 0: result.json does not say
+
+
+def test_symlinks_inside_the_scan_are_not_followed(tmp_path: Path) -> None:
+    outside = tmp_path / "outside"
+    syn.write_result(outside / "node-tar-7.5.2", syn.result(mode=syn.ResultMode.FIXTURE_REGRESSION))
+    root = tmp_path / f"{syn.SYNTHETIC}-verify"
+    root.mkdir()
+    os.symlink(outside / "node-tar-7.5.2", root / "linked-cell")
+    os.symlink(outside, root / "linked-tree")
+    assert runs.discover_runs([root]) == []
+
+
+def test_the_strict_readers_private_key_sets_still_exist() -> None:
+    # runs.py reads these private names on purpose (target_result.py is not changed for the UI);
+    # if they are renamed or removed this fails instead of the extras split drifting silently.
+    from inodefence import target_result
+
+    keys = target_result._CAMPAIGN_KEYS | target_result._CAMPAIGN_OPTIONAL
+    assert {"seed", "budget", "runs_to_first_violation", "unjudged_steps"} <= keys
+    assert keys <= runs._KNOWN_CAMPAIGN

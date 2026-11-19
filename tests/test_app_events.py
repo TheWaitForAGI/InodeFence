@@ -123,3 +123,26 @@ def test_diff_is_pure_and_matches_read_run(tmp_path: Path) -> None:
     snap = runs.read_run(RunRef(RunKind.EXPLORE, out, rid))
     assert events.diff_snapshots(snap, snap) == []
     assert _kinds(events.diff_snapshots(None, snap)) == ["progress", "state_change"]
+
+
+def test_stop_leaves_no_thread_even_with_open_subscriptions(tmp_path: Path) -> None:
+    import threading
+
+    follower = RunFollower(roots=[syn.explore_out(tmp_path)], interval=0.05)
+    follower.subscribe()  # never closed
+    follower.start()
+    assert any(t.name == "inodefence-ui-follow" for t in threading.enumerate())
+    follower.stop()
+    assert not any(t.name == "inodefence-ui-follow" for t in threading.enumerate())
+
+
+def test_an_unvalidated_result_is_ready_and_marked(tmp_path: Path) -> None:
+    import json
+
+    cell = tmp_path / f"{syn.SYNTHETIC}-verify" / "node-tar-7.5.2"
+    data = syn.result(mode=syn.ResultMode.FIXTURE_REGRESSION).to_json_dict()
+    data["runs"]["executed"] = 99
+    syn.write_result(cell, syn.result(), text=json.dumps(data))
+    (ready,) = [e for e in RunFollower([RunRef(RunKind.VERIFY, cell, cell.name)]).poll_once()
+                if e.kind is EventKind.RESULT_READY]  # fmt: skip
+    assert ready.status == "as-stored"

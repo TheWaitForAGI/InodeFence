@@ -267,3 +267,18 @@ def test_the_strict_readers_private_key_sets_still_exist() -> None:
     keys = target_result._CAMPAIGN_KEYS | target_result._CAMPAIGN_OPTIONAL
     assert {"seed", "budget", "runs_to_first_violation", "unjudged_steps"} <= keys
     assert keys <= runs._KNOWN_CAMPAIGN
+
+
+def test_an_unreadable_folder_is_listed_not_raised(tmp_path: Path) -> None:
+    root = tmp_path / f"{syn.SYNTHETIC}-verify"
+    locked = root / "locked"
+    locked.mkdir(parents=True)
+    os.chmod(locked, 0)
+    try:
+        listings = runs.discover_runs([root])
+    finally:
+        os.chmod(locked, 0o755)
+    if os.geteuid() == 0:
+        pytest.skip("root reads any folder")
+    (listing,) = listings
+    assert listing.path == locked and listing.read_state is ReadState.UNREADABLE and listing.error

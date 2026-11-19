@@ -37,7 +37,12 @@ import os
 import shutil
 import subprocess
 import sys
+import textwrap
+from collections import Counter
+from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from inodefence.locate import (
     EXPLORE_DRIVER,
@@ -57,6 +62,9 @@ from inodefence.user_config import (
     UserConfigError,
     load_user_config,
 )
+
+if TYPE_CHECKING:  # the health module is loaded lazily, by doctor only
+    from inodefence.drivers.runtime.health import Residue
 
 PROG = "inodefence"
 #: Same runtime default as :mod:`inodefence.runtime` (read from the environment only).
@@ -105,9 +113,104 @@ def cmd_targets(args: argparse.Namespace) -> int:
     return 0
 
 
-def _check(label: str, status: str, detail: str) -> str:
-    """Print one doctor line. ``status``: OK, FAIL, WARN (not needed for every command), UNKNOWN."""
-    print(f"[{status}] {label}: {detail}")
+#: Doctor layout: the status column (``[UNKNOWN]`` and a space) and the item-name column. A longer
+#: name gets its own line; the value then starts on the next line in the value column.
+_STATUS_WIDTH = 10
+_LABEL_WIDTH = 24  # the longest item name (22) and two spaces
+#: Width used when stdout is not a terminal (a pipe or a file), so captured output is stable.
+_PIPE_WIDTH = 100
+_STATUS_COLORS = {"OK": "32", "WARN": "33", "FAIL": "31", "UNKNOWN": "2", "INFO": "2"}
+
+
+@dataclass
+class _DoctorView:
+    """How doctor lines are drawn: width, colour, the arrow/separator glyphs, and ``--details``.
+
+    Only presentation: what each check decides (OK/WARN/FAIL/UNKNOWN/INFO) and the exit code are
+    computed by the checks and never depend on this.
+    """
+
+    width: int = _PIPE_WIDTH
+    color: bool = False
+    details: bool = False
+    arrow: str = "->"
+    dot: str = ","
+
+    @classmethod
+    def for_stdout(cls, details: bool) -> _DoctorView:
+        tty = sys.stdout.isatty()
+        width = shutil.get_terminal_size((_PIPE_WIDTH, 24)).columns if tty else _PIPE_WIDTH
+        try:
+            "→·".encode(sys.stdout.encoding or "ascii")
+            arrow, dot = "→", "·"
+        except (LookupError, UnicodeEncodeError):
+            arrow, dot = "->", ","
+        return cls(
+            width=max(width, 40),
+            color=tty and "NO_COLOR" not in os.environ,
+            details=details,
+            arrow=arrow,
+            dot=dot,
+        )
+
+
+_VIEW = _DoctorView()
+
+
+def _pack(parts: Sequence[str], separator: str, width: int) -> list[str]:
+    """``parts`` joined by ``separator``, a new line only between parts (not inside one)."""
+    lines: list[str] = []
+    for part in parts:
+        if lines and len(lines[-1]) + len(separator) + len(part) <= width:
+            lines[-1] += separator + part
+        else:
+            lines.append(part)
+    return lines
+
+
+def _wrap(text: str, width: int, continuation: str = "") -> list[str]:
+    return textwrap.wrap(
+        text,
+        width=max(width, 10),
+        subsequent_indent=continuation,
+        break_long_words=True,
+        break_on_hyphens=False,
+    ) or [""]
+
+
+def _check(
+    label: str,
+    status: str,
+    detail: str,
+    *,
+    more: Sequence[str] = (),
+    hints: Sequence[str] = (),
+) -> str:
+    """Print one doctor item and return ``status`` (OK, FAIL, WARN, UNKNOWN or INFO).
+
+    The status and the item name are in fixed columns; ``detail`` and each of ``more`` start a
+    line in the value column and wrap there; each of ``hints`` (what to do next) is its own line
+    starting with an arrow. Nothing is printed past the width.
+    """
+    view = _VIEW
+    tag = f"[{status}]"
+    shown = f"\x1b[{_STATUS_COLORS.get(status, '0')}m{tag}\x1b[0m" if view.color else tag
+    pad = " " * (_STATUS_WIDTH - len(tag))
+    indent = " " * (_STATUS_WIDTH + _LABEL_WIDTH)
+    value_width = view.width - len(indent)
+    values = [line for text in (detail, *more) for line in _wrap(text, value_width)]
+    for hint in hints:
+        values += _wrap(f"{view.arrow} {hint}", value_width, continuation="  ")
+    if len(label) <= _LABEL_WIDTH - 2:  # two spaces at least between the name and the value
+        print(f"{shown}{pad}{label.ljust(_LABEL_WIDTH)}{values[0]}".rstrip())
+        values = values[1:]
+    else:
+        label_lines = _wrap(label, view.width - _STATUS_WIDTH)
+        print(f"{shown}{pad}{label_lines[0]}")
+        for line in label_lines[1:]:
+            print(f"{' ' * _STATUS_WIDTH}{line}")
+    for line in values:
+        print(f"{indent}{line}".rstrip())
     return status
 
 
@@ -199,55 +302,81 @@ def _relative_output_base(config: UserConfig) -> str | None:
     )
 
 
+def _split_fix(detail: str) -> tuple[str, tuple[str, ...]]:
+    """``problem; fix`` (one wording shared with the commands) -> the problem and a → hint."""
+    problem, sep, fix = detail.rpartition("; ")
+    return (problem, (fix,)) if sep else (detail, ())
+
+
 def _output_base_check(config: UserConfig, root: Path | None) -> str:
     base = config.output_base
     path = Path(base.value)
-    label = f"output folder base ({base.source})"
+    label = "output folder"
     relative = _relative_output_base(config)
     if relative:
-        return _check(label, "FAIL", relative)
+        problem, hints = _split_fix(relative)
+        return _check(label, "FAIL", problem, hints=hints)
+    where = f"{path} ({base.source})"
     if root is not None and path.resolve().is_relative_to(root.resolve()):
         return _check(
-            label, "FAIL", f"{path} is inside the repository {root}; outputs must be outside it"
+            label,
+            "FAIL",
+            f"{where} is inside the repository {root}",
+            hints=(
+                "outputs must be outside it: set INODEFENCE_OUTPUT_DIR to a folder outside "
+                "the repository",
+            ),
         )
     existing = path
     while not existing.exists() and existing != existing.parent:
         existing = existing.parent
+    move = ("set INODEFENCE_OUTPUT_DIR to a folder you can write to",)
     if not existing.is_dir():
-        return _check(label, "FAIL", f"{path}: {existing} exists and is not a folder")
+        return _check(label, "FAIL", f"{where}: {existing} exists and is not a folder", hints=move)
     if not os.access(existing, os.W_OK):
-        return _check(label, "FAIL", f"{path}: {existing} is not writable by you")
+        return _check(label, "FAIL", f"{where}: {existing} is not writable by you", hints=move)
     synced = _looks_cloud_synced(path.resolve())
     if synced:
         return _check(
             label,
             "WARN",
-            f"{path} looks like a cloud-synced folder ({synced!r} in the path); violating inputs "
-            "should not be uploaded. Set INODEFENCE_OUTPUT_DIR to a local folder. "
-            "(name-based guess only; a synced folder with another name is not detected)",
+            f"{where} looks like a cloud-synced folder ({synced!r} in the path); violating inputs "
+            "should not be uploaded",
+            more=("(name-based guess only; a synced folder with another name is not detected)",),
+            hints=("set INODEFENCE_OUTPUT_DIR to a local folder",),
         )
     return _check(
         label,
         "OK",
-        f"{path} (default --out: {config.default_out(VERIFY_OUT_NAME)}, "
-        f"{config.default_out(EXPLORE_OUT_NAME)})",
+        where,
+        more=(
+            f"default --out: {config.default_out(VERIFY_OUT_NAME)}, "
+            f"{config.default_out(EXPLORE_OUT_NAME)}",
+        ),
     )
 
 
 def _docker_checks() -> list[str]:
     docker = shutil.which("docker")
     statuses = [
-        _check(
+        _check("Docker CLI", "OK", f"{docker}")
+        if docker
+        else _check(
             "Docker CLI",
-            "OK" if docker else "FAIL",
-            f"{docker}" if docker else "docker not on PATH; targets run in Docker on the host",
+            "FAIL",
+            "docker not on PATH",
+            hints=(
+                "install Docker (Docker Desktop, or Docker Engine on Linux); targets run in "
+                "Docker on the host",
+            ),
         )
     ]
     if not docker:
         statuses.append(_check("Docker daemon access", "UNKNOWN", "no docker CLI to ask"))
         return statuses
     status, detail = _docker_server()
-    statuses.append(_check("Docker daemon access", status, detail))
+    problem, hints = _split_fix(detail) if status == "FAIL" else (detail, ())
+    statuses.append(_check("Docker daemon access", status, problem, hints=hints))
     images = _local_images() if status == "OK" else None
     if images is None:
         statuses.append(
@@ -260,17 +389,51 @@ def _docker_checks() -> list[str]:
         "(read-only), and --auto-prepare builds a missing one"
     )
     if images:
-        statuses.append(
-            _check(
-                "prepared images",
-                "OK",
-                f"{len(images)} inodefence-* image(s) present: {', '.join(images)}; {readiness}",
-            )
+        groups = _pack(
+            [f"{name} {count}" for name, count in _image_groups(images).items()],
+            f" {_VIEW.dot} ",
+            _VIEW.width - _STATUS_WIDTH - _LABEL_WIDTH,
         )
+        if _VIEW.details:
+            statuses.append(
+                _check(
+                    "prepared images",
+                    "OK",
+                    f"{len(images)} inodefence-* image(s) present",
+                    more=(*groups, *images),
+                    hints=(readiness,),
+                )
+            )
+        else:
+            statuses.append(
+                _check(
+                    "prepared images",
+                    "OK",
+                    f"{len(images)} inodefence-* image(s) present",
+                    more=groups,
+                    hints=("full list: inodefence doctor --details",),
+                )
+            )
     else:
         # Not a failure: images are built on first use with --auto-prepare.
-        statuses.append(_check("prepared images", "INFO", f"none yet; {readiness}"))
+        statuses.append(_check("prepared images", "INFO", "none yet", hints=(readiness,)))
     return statuses
+
+
+#: Image groups by target, read from the repository name (``inodefence-<target>-…``). Longer names
+#: first, so ``python-tarfile`` is not counted under another target. Others count as "other".
+_IMAGE_TARGETS = ("python-tarfile", "node-tar", "decompress", "oras-go")
+
+
+def _image_groups(images: Sequence[str]) -> dict[str, int]:
+    """How many of ``images`` (``repo:tag``) belong to each target, in a fixed order; read from
+    the name only (what each image serves is not checked here)."""
+    counts: Counter[str] = Counter()
+    for image in images:
+        name = image.split(":", 1)[0].split("/")[-1].removeprefix("inodefence-")
+        counts[next((t for t in _IMAGE_TARGETS if name.startswith(t)), "other")] += 1
+    order = ("node-tar", "decompress", "oras-go", "python-tarfile", "other")
+    return {name: counts[name] for name in order if counts[name]}
 
 
 def _find_residue():
@@ -290,27 +453,68 @@ def _host_checks(config: UserConfig | None, daemon_ok: bool) -> list[str]:
     from inodefence.drivers.runtime import health
 
     statuses = []
-    label = "leftover containers / volumes (read-only; nothing is removed)"
+    label = "leftover from old runs"
     if not daemon_ok:
         statuses.append(_check(label, "UNKNOWN", "not asked (daemon not usable)"))
     else:
         residue = _find_residue()
         if residue.clean:
-            statuses.append(_check(label, "OK", "none labelled or named as InodeFence's"))
+            statuses.append(
+                _check(label, "OK", "no container or volume labelled or named as InodeFence's")
+            )
         else:
             status = "WARN" if residue.containers or residue.volumes else "UNKNOWN"
-            statuses.append(_check(label, status, "; ".join(residue.lines())))
+            statuses.append(_residue_check(label, status, residue))
     if config is not None and _relative_output_base(config):
-        statuses.append(
-            _check("free disk at the output folder base", "UNKNOWN", "not checked (see above)")
-        )
+        statuses.append(_check("free disk", "UNKNOWN", "not checked (see output folder)"))
     elif config is not None:
         disk = health.disk_free(Path(config.output_base.value))
         status = "UNKNOWN" if disk.free_bytes is None else "WARN" if disk.low else "OK"
-        statuses.append(_check("free disk at the output folder base", status, disk.detail))
+        hints = (
+            ("free some space there, or set INODEFENCE_OUTPUT_DIR to a disk with room",)
+            if status == "WARN"
+            else ()
+        )
+        statuses.append(_check("free disk", status, disk.detail, hints=hints))
     memory = health.memory_status()
-    statuses.append(_check("memory headroom for Docker", memory.state, memory.detail))
+    if memory.state == "UNKNOWN" and not _VIEW.details:
+        statuses.append(
+            _check(
+                "Docker memory",
+                "UNKNOWN",
+                "not checked on this host",
+                hints=("why: inodefence doctor --details",),
+            )
+        )
+    else:
+        statuses.append(_check("Docker memory", memory.state, memory.detail))
     return statuses
+
+
+def _plural(count: int, noun: str) -> str:
+    return f"{count} {noun}" + ("" if count == 1 else "s")
+
+
+def _residue_check(label: str, status: str, residue: Residue) -> str:
+    """The leftover line: counts by default; names and the removal guidance with ``--details``.
+
+    The guidance and the unknown-listing sentences are :meth:`Residue.lines`' own wording.
+    """
+    found = [
+        _plural(len(names), noun)
+        for names, noun in ((residue.containers, "container"), (residue.volumes, "volume"))
+        if names
+    ]
+    detail = (", ".join(found) + " (nothing was removed)") if found else "listing incomplete"
+    lines = residue.lines()
+    unknown = [line for line in lines if line.startswith("could not list")]
+    if not _VIEW.details:
+        hints = ("names and how to remove: inodefence doctor --details",) if found else ()
+        return _check(label, status, detail, more=unknown, hints=hints)
+    names = [f"container {name}" for name in residue.containers]
+    names += [f"volume {name}" for name in residue.volumes]
+    guidance = [line for line in lines if line.startswith("nothing was removed")]
+    return _check(label, status, detail, more=(*names, *unknown), hints=guidance)
 
 
 def _runtime_check() -> str:
@@ -318,7 +522,12 @@ def _runtime_check() -> str:
     from inodefence.runtime import RUNTIME_BASE
 
     runtime = Path(os.environ.get("INODEFENCE_RUNTIME_ROOT", RUNTIME_ROOT_DEFAULT))
-    label = "runtime directory (development only: make check / tests; not used by verify / explore)"
+    label = "runtime dir (dev only)"
+    about = (
+        ("development only: make check / tests; not used by verify / explore",)
+        if _VIEW.details
+        else ()
+    )
     if (
         not runtime.is_absolute()
         or ".." in runtime.parts
@@ -328,17 +537,29 @@ def _runtime_check() -> str:
             label,
             "FAIL",
             f"INODEFENCE_RUNTIME_ROOT={runtime} is not allowed: it must be an absolute path within "
-            f"{RUNTIME_BASE} (unset it to use {RUNTIME_BASE})",
+            f"{RUNTIME_BASE}",
+            more=about,
+            hints=(f"unset INODEFENCE_RUNTIME_ROOT to use {RUNTIME_BASE}",),
         )
     if runtime.is_symlink():
-        return _check(label, "FAIL", f"{runtime} is a symlink; the runtime root must not be one")
+        return _check(
+            label,
+            "FAIL",
+            f"{runtime} is a symlink; the runtime root must not be one",
+            more=about,
+            hints=(f"set INODEFENCE_RUNTIME_ROOT to a real folder within {RUNTIME_BASE}",),
+        )
     if runtime.is_dir():
-        return _check(label, "OK", str(runtime))
+        return _check(label, "OK", str(runtime), more=about)
     return _check(
         label,
         "WARN",
-        f"{runtime} missing; for development create it with: "
-        f'sudo mkdir -p {runtime} && sudo chown "$(id -u):$(id -g)" {runtime}',
+        f"{runtime} missing",
+        more=about,
+        hints=(
+            "for development create it with: "
+            f'sudo mkdir -p {runtime} && sudo chown "$(id -u):$(id -g)" {runtime}',
+        ),
     )
 
 
@@ -358,7 +579,8 @@ def _repository_check(config: UserConfig | None) -> tuple[str, Path | None]:
     the source (``INODEFENCE_HOME`` from the environment or the config file, else this install's
     checkout) and the check the commands make before running a driver.
     """
-    label = "repository (needed by targets / verify / explore / replay)"
+    label = "repository"
+    about = ("needed by targets / verify / explore / replay",) if _VIEW.details else ()
     setting = config.get("INODEFENCE_HOME") if config is not None else None
     env_home = os.environ.get("INODEFENCE_HOME")
     if env_home:
@@ -368,11 +590,15 @@ def _repository_check(config: UserConfig | None) -> tuple[str, Path | None]:
     else:
         home, source = None, "the checkout this inodefence is installed from"
     root = repo_root()
+    fix = (
+        "set INODEFENCE_HOME to an InodeFence clone, or update that clone (`git pull`); "
+        "then run doctor again",
+    )
     if root is None:
-        return _check(label, "FAIL", repo_not_found_message()), None
+        return _check(label, "FAIL", repo_not_found_message(), more=about, hints=fix), None
     problem = _repository_code_problem(root)
     if problem:
-        return _check(label, "FAIL", f"{root} ({source}): {problem}"), None
+        return _check(label, "FAIL", f"{root} ({source}): {problem}", more=about, hints=fix), None
     notes = []
     if setting is not None and setting.overridden is not None:
         notes.append(
@@ -382,13 +608,15 @@ def _repository_check(config: UserConfig | None) -> tuple[str, Path | None]:
     if home is not None and root.resolve() != _running_code().parents[1].resolve():
         notes.append("target commands run this clone's code, not the code doctor runs from")
     status = "OK"
+    hints: tuple[str, ...] = ()
     if home is not None and not Path(home).expanduser().is_absolute():
         status = "WARN"
         notes.append(
             f"INODEFENCE_HOME={home} is relative, so the clone it names depends on the working "
-            "directory; set an absolute path"
+            "directory"
         )
-    return _check(label, status, "; ".join([f"{root} ({source})", *notes])), root
+        hints = ("set INODEFENCE_HOME to an absolute path",)
+    return _check(label, status, f"{root} ({source})", more=(*notes, *about), hints=hints), root
 
 
 def _running_code() -> Path:
@@ -405,34 +633,48 @@ def _running_code_check() -> str:
     then the code running is that path's, not the installed one. Nothing is ignored or blocked.
     """
     code = _running_code()
-    label = "inodefence code running doctor / status / summary"
+    label = "inodefence code"
+    about = ("the code running doctor / status / summary",) if _VIEW.details else ()
     for entry in filter(None, os.environ.get("PYTHONPATH", "").split(os.pathsep)):
         base = Path(entry).expanduser().resolve()
         if code.is_relative_to(base):
             return _check(
                 label,
                 "WARN",
-                f"{code} is loaded from PYTHONPATH entry {entry}, not from the installed package; "
-                "unset PYTHONPATH if that is not intended",
+                f"{code} is loaded from PYTHONPATH entry {entry}, not from the installed package",
+                more=about,
+                hints=("unset PYTHONPATH if that is not intended",),
             )
-    return _check(label, "INFO", str(code))
+    return _check(label, "INFO", str(code), more=about)
 
 
 def cmd_doctor(args: argparse.Namespace) -> int:
+    global _VIEW
+    _VIEW = _DoctorView.for_stdout(details=getattr(args, "details", False))
     statuses: list[str] = []
     version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
     py_ok = sys.version_info[:2] == (3, 12)
     statuses.append(
-        _check(
+        _check("Python 3.12", "OK", version)
+        if py_ok
+        else _check(
             "Python 3.12",
-            "OK" if py_ok else "FAIL",
-            version if py_ok else f"found {version}; InodeFence needs 3.12",
+            "FAIL",
+            f"found {version}; InodeFence needs 3.12",
+            hints=("install inodefence into a Python 3.12 environment",),
         )
     )
 
     config: UserConfig | None = args.user_config
     if config is None:
-        statuses.append(_check("user config", "FAIL", str(args.user_config_error)))
+        statuses.append(
+            _check(
+                "user config",
+                "FAIL",
+                str(args.user_config_error),
+                hints=("fix the file and line named above (other commands refuse until then)",),
+            )
+        )
     else:
         detail = (
             str(config.config_path)
@@ -743,6 +985,11 @@ def build_parser() -> argparse.ArgumentParser:
         "doctor",
         help="check the environment and say how to fix problems",
         epilog="exit codes: 0 no check failed (UNKNOWN lines are not failures), 1 a check failed.",
+    )
+    doctor.add_argument(
+        "--details",
+        action="store_true",
+        help="also list every image and leftover by name, with how to remove a leftover",
     )
     doctor.set_defaults(func=cmd_doctor)
 

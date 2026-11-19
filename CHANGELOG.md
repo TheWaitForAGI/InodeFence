@@ -28,6 +28,13 @@
 `pyproject.toml`의 버전은 이미 `0.2.0`이다.
 
 ### 추가된 사용자 기능
+- `inodefence doctor`의 화면을 열로 맞췄다(상태·항목 이름·값). 긴 값은 같은 열에서 다음 줄로 이어지고, 다음에 할 일은
+  `→`로 시작하는 다음 줄에 있다. 이미지와 남은 컨테이너·볼륨은 기본 화면에서 개수와 대상별 묶음만 보이고, 전체 이름과
+  제거 안내는 새 옵션 `inodefence doctor --details`에 있다. 상태 표시는 터미널에서만 색이 들어간다(`NO_COLOR`가 있으면
+  끔, 파이프·파일은 색 코드 없음). `FAIL`·`WARN` 항목은 다음에 할 일을 기본 화면의 `→` 줄로 보여 준다. 판정과 종료
+  코드는 그대로다. 항목 이름을 짧게 바꿨다: `repository`, `output folder`, `leftover from old runs`, `free disk`,
+  `Docker memory`, `inodefence code`, `runtime dir (dev only)`(떼어 낸 설명은 `--details`). 터미널 문구는 호환 약속
+  밖이다. [USAGE](docs/USAGE.md)
 
 - **`inodefence` 명령.** 하위 명령 `targets`(대상과 지원 기능 표), `doctor`(환경 점검), `verify`(고정 입력 회귀 검사),
   `explore`(피드백 탐색), `status`(실행 중·끝난 탐색 확인), `replay`(탐색 케이스 재실행, 네 대상), `summary`(결과

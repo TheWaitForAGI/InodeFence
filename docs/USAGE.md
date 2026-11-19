@@ -47,8 +47,44 @@ wheel로 설치했다면 `INODEFENCE_HOME`(환경 변수 또는 아래 설정 �
 고른 clone에 `src/inodefence/__init__.py`와 `src/inodefence/drivers/`가 둘 다 있어야 합니다. 하나라도 없으면(손상된 clone, 또는 `src/inodefence`는 있지만 `drivers/`가 없는 이 버전 이전 레이아웃의 clone) 다른 설치본으로 대신 돌리지 않고 종료 3으로 거부하며, 그 clone을 갱신(`git pull`)하거나 `INODEFENCE_HOME`을 최신 clone으로 바꾸라고 안내합니다.
 
 `doctor`는 각 항목을 `OK`·`FAIL`·`WARN`·`INFO`·`UNKNOWN`으로 출력합니다. 확인하지 못한 것은 `OK`가
-아니라 `UNKNOWN`입니다. 로컬 `inodefence-*` 이미지는 있으면 `OK`로 이름을 나열하고, 없으면 `INFO`
-(처음 쓸 때 `--auto-prepare`로 빌드)입니다. 다만 어느 이미지가 어느 대상·버전용으로 바로 쓸 수 있는지는
+아니라 `UNKNOWN`입니다.
+
+화면은 열로 맞춥니다. 상태, 항목 이름, 값이 각자 열에 있고, 값이 길면 같은 열에서 다음 줄로 이어집니다.
+다음에 할 일은 항목 줄에 붙이지 않고 `→`로 시작하는 다음 줄에 씁니다. `FAIL`·`WARN`인 항목은 무엇이 문제이고
+다음에 무엇을 하면 되는지를 기본 화면에 `→` 줄로 보여 줍니다. `--details`로 미루는 것은 긴 목록과 긴 배경
+설명뿐입니다.
+
+항목 이름은 짧습니다. 떼어 낸 설명은 `--details`에 있습니다.
+
+| 항목 이름 | 0.2.0의 이름 | `--details`에만 있는 것 |
+| --- | --- | --- |
+| `repository` | `repository (needed by targets / verify / explore / replay)` | 쓰는 명령 |
+| `output folder` | `output folder base (<출처>)` | — (출처는 값에 있습니다) |
+| `leftover from old runs` | `leftover containers / volumes (read-only; nothing is removed)` | 이름과 제거 안내 |
+| `free disk` | `free disk at the output folder base` | — |
+| `Docker memory` | `memory headroom for Docker` | 확인하지 못하는 이유(기본 화면은 `not checked on this host`) |
+| `inodefence code` | `inodefence code running doctor / status / summary` | 무엇을 가리키는지 |
+| `runtime dir (dev only)` | `runtime directory (development only: make check / tests; not used by verify / explore)` | 쓰는 곳 |
+
+- **폭:** 터미널이면 터미널 폭에 맞춰 접습니다. 파이프나 파일로 보내면 100칸입니다.
+- **색:** 상태 표시만 칠합니다(`OK` 초록, `WARN` 노랑, `FAIL` 빨강, `UNKNOWN`·`INFO` 흐리게). stdout이 터미널일 때만 칠하고, 환경 변수 `NO_COLOR`가 있으면 끕니다. 파이프나 파일에는 색 코드가 나가지 않습니다.
+- **긴 목록:** 기본 화면은 개수와 묶음만 보여 줍니다.
+  - 로컬 `inodefence-*` 이미지가 있으면 `OK`와 함께 개수, 그리고 대상별 개수(`node-tar`·`decompress`·`oras-go`·`python-tarfile`·그 밖)를 보여 줍니다. 대상은 이미지 이름으로만 나눕니다.
+  - 이미지가 없으면 `INFO`입니다(처음 쓸 때 `--auto-prepare`로 빌드).
+  - 남은 컨테이너·볼륨은 개수만 보여 줍니다.
+  - 전체 이름(한 줄에 하나)과 긴 안내는 `inodefence doctor --details`에 있습니다.
+
+```text
+[OK]      prepared images         71 inodefence-* image(s) present
+                                  node-tar 39 · decompress 10 · oras-go 13 · python-tarfile 1
+                                  other 8
+                                  → full list: inodefence doctor --details
+[WARN]    leftover from old runs  11 containers, 11 volumes (nothing was removed)
+                                  → names and how to remove: inodefence doctor --details
+```
+
+(가짜 입력으로 찍은 예입니다.) 판정(`OK`·`WARN`·`FAIL`·`UNKNOWN`·`INFO`)과 종료 코드는 화면 모양과 무관합니다.
+`--details`도 판정을 바꾸지 않습니다. 어느 이미지가 어느 대상·버전용으로 바로 쓸 수 있는지는
 `doctor`가 판단하지 않고, `inodefence verify --target node-tar --version 7.5.2 --dry-run`(읽기 전용)이
 셀마다 재사용/준비 계획을 보여 줍니다. 이미지가 없으면 `--auto-prepare`를 줄 때만 Docker로 빌드합니다
 (네트워크 필요). `explore`는 실제 실행에 `--auto-prepare`가 필수이고(없으면 아무것도 실행하지 않고 이유를
@@ -56,15 +92,16 @@ wheel로 설치했다면 `INODEFENCE_HOME`(환경 변수 또는 아래 설정 �
 테스트용 개발 전제라 `doctor`에서 없으면 `WARN`이고, `/var/lib/inodefence` 밖이나 symlink로 설정돼 있으면
 `FAIL`입니다(그 규칙은 바뀌지 않았습니다).
 
-`doctor`는 Docker 점검 줄 바로 뒤, 마지막 `runtime directory` 줄 앞에 세 줄을 더 출력합니다. 모두 읽기만 하며 아무것도 바꾸거나 지우지 않습니다.
+`doctor`는 Docker 점검 줄 바로 뒤, 마지막 `runtime dir (dev only)` 줄 앞에 세 줄을 더 출력합니다. 모두 읽기만 하며 아무것도 바꾸거나 지우지 않습니다.
 
 - **남은 컨테이너·볼륨:** InodeFence 소유 라벨(`org.inodefence.smoke-owner`·`org.inodefence.execution-owner`)이
   붙었거나 이름이 런처의 컨트롤러·볼륨 이름(`inodefence-local-controller`, `inodefence-decompress-controller`,
-  `inodefence-oras-go-runtime` 등)인 것을 조회합니다. 있으면 `WARN`과 함께 확인 명령
-  (`docker container inspect <이름>`)과, 내 것이고 쓰는 실행이 없을 때만 쓸 제거 명령을 보여 줍니다. 도구가
-  직접 지우지는 않습니다. Docker가 답하지 않으면 `UNKNOWN`입니다(정리됐다고 보지 않습니다).
+  `inodefence-oras-go-runtime` 등)인 것을 조회합니다. 있으면 기본 화면은 `WARN`(항목 이름 `leftover from old runs`)과
+  개수만 보여 줍니다. `--details`는 이름과 함께 확인 명령(`docker container inspect <이름>`)과, 내 것이고 쓰는
+  실행이 없을 때만 쓸 제거 명령을 보여 줍니다. 도구가 직접 지우지는 않습니다. Docker가 답하지 않으면 `UNKNOWN`입니다(정리됐다고 보지 않습니다).
 - **출력 폴더 디스크 여유:** 2 GiB 미만이면 `WARN`입니다(거부하지 않습니다).
-- **Docker 메모리 여유:** 항상 `UNKNOWN`입니다. Windows + WSL2에서 Docker Desktop backend의 메모리는 Windows
+- **Docker 메모리 여유(`Docker memory`):** 항상 `UNKNOWN`입니다. 기본 화면은 `not checked on this host` 한 줄이고, 아래 이유는
+  `--details`에 있습니다. Windows + WSL2에서 Docker Desktop backend의 메모리는 Windows
   커밋 한도에 걸리는데, WSL 안에서는 그 한도를 볼 수 없습니다(2026-11-16 HOST2 정지 4: WSL 쪽 여유는 충분했지만
   Windows 쪽 가상 메모리 부족과 함께 backend가 사라졌습니다). 이 `UNKNOWN`은 종료 코드에 영향이 없습니다.
 
@@ -89,9 +126,9 @@ wheel로 설치했다면 `INODEFENCE_HOME`(환경 변수 또는 아래 설정 �
   대상 명령이 그 클론의 코드로 돈다고 적습니다. `INODEFENCE_HOME`이 클론이 아니면 그 값과 출처를 적어 `FAIL`,
   클론이지만 실행할 코드(`src/inodefence/drivers/`)가 없으면 대상 명령과 같은 거부 문구로 `FAIL`, 상대 경로면
   (실행한 폴더에 따라 바뀌므로) `WARN`입니다.
-- `output folder base` 줄: 출력 기준 폴더와 출처, 그리고 `verify`·`explore`의 기본 `--out` 두 개. 기준 폴더가
+- `output folder` 줄: 출력 기준 폴더와 출처, 그리고 `verify`·`explore`의 기본 `--out` 두 개. 기준 폴더가
   이미 있는 파일이면 `FAIL`입니다.
-- `inodefence code running doctor / status / summary` 줄(`runtime directory` 줄 바로 앞): 지금 돌고 있는
+- `inodefence code` 줄(`runtime dir (dev only)` 줄 바로 앞): 지금 돌고 있는
   `inodefence` 패키지 폴더(`INFO`). `PYTHONPATH`가 설정돼 있고 패키지가 그 아래에서 읽혔으면, 설치본이 아니라
   그 경로의 코드가 돈다는 `WARN`입니다. 이 줄은 종료 코드에 영향이 없고, `PYTHONPATH`를 무시하거나 막지 않습니다.
 

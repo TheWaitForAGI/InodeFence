@@ -41,6 +41,52 @@ def _no_real_docker_listing(monkeypatch) -> None:
     monkeypatch.setattr(cli, "_local_images", lambda: None)
 
 
+@pytest.fixture(autouse=True)
+def _wide_doctor(monkeypatch) -> None:
+    """Draw doctor without wrapping (a very wide pipe), so an item's value is on one line and
+    :func:`_flat` gives back ``[STATUS] label: value``. The layout itself (columns, wrapping at a
+    real width, colour) is tested below with its own widths."""
+    monkeypatch.setattr(cli, "_PIPE_WIDTH", 10_000)
+
+
+_ITEM = __import__("re").compile(r"^\[(?P<status>[A-Z]+)\]\s+(?P<rest>.*)$")
+
+
+def _doctor_items(out: str) -> list[dict]:
+    """Doctor's items from its output: status, name, value lines and ``→`` hint lines."""
+    items: list[dict] = []
+    for line in out.splitlines():
+        found = _ITEM.match(line)
+        if found:
+            label, _, value = found["rest"].partition("  ")
+            items.append({"status": found["status"], "label": label, "values": [], "hints": []})
+            if value.strip():
+                items[-1]["values"].append(value.strip())
+        elif items and line.startswith(" ") and line.strip():
+            text = line.strip()
+            hint_goes_on = line.startswith(" " * (cli._STATUS_WIDTH + cli._LABEL_WIDTH + 2))
+            if text.startswith(("→", "->")):
+                items[-1]["hints"].append(text)
+            elif hint_goes_on and items[-1]["hints"]:
+                items[-1]["hints"][-1] += " " + text  # a wrapped hint
+            else:
+                items[-1]["values"].append(text)
+        elif not line.strip() and items:
+            items.append({"status": None, "label": None, "values": [], "hints": []})
+    return [item for item in items if item["status"]]
+
+
+def _flat(out: str) -> str:
+    """``[STATUS] label: value value …`` per doctor item (the one-line shape before the column
+    layout; hints after the values), then the output itself unchanged (other lines, the summary)."""
+    items = "\n".join(
+        f"[{item['status']}] {item['label']}: " + " ".join(item["values"] + item["hints"])
+        for item in _doctor_items(out)
+    )
+    raw = "\n".join(f"| {line}" for line in out.splitlines())  # never starts with "["
+    return f"{items}\n----\n{raw}\n"
+
+
 @pytest.fixture
 def _docker_ok(monkeypatch) -> None:
     monkeypatch.setattr(cli, "_docker_server", lambda: ("OK", "server 29.0.0"))
@@ -386,10 +432,10 @@ def test_doctor_missing_repo_and_docker_fails(monkeypatch, capsys) -> None:
     monkeypatch.setattr(cli.shutil, "which", lambda name: None)
     monkeypatch.setattr(cli.Path, "is_dir", lambda self: False)
     assert cli.main(["doctor"]) == 1
-    out = capsys.readouterr().out
+    out = _flat(capsys.readouterr().out)
     assert "[FAIL] repository" in out and "[FAIL] Docker CLI" in out
     assert "[UNKNOWN] Docker daemon access" in out  # not asked, so not reported as OK
-    assert "[WARN] runtime directory" in out  # development-only, not a user-command failure
+    assert "[WARN] runtime dir (dev only)" in out  # development-only, not a user-command failure
 
 
 def test_doctor_reports_daemon_failure_and_unknown_image_readiness(
@@ -399,7 +445,7 @@ def test_doctor_reports_daemon_failure_and_unknown_image_readiness(
     monkeypatch.setattr(cli.shutil, "which", lambda name: "/usr/bin/docker")
     monkeypatch.setattr(cli, "_docker_server", lambda: ("FAIL", "permission denied; fix"))
     assert cli.main(["doctor"]) == 1
-    out = capsys.readouterr().out
+    out = _flat(capsys.readouterr().out)
     assert "[FAIL] Docker daemon access: permission denied" in out
     assert "[UNKNOWN] prepared images" in out
 
@@ -414,12 +460,17 @@ def test_doctor_all_ok_still_says_image_readiness_is_unverified(
     monkeypatch.setenv("INODEFENCE_OUTPUT_DIR", str(tmp_path / "outputs"))
     monkeypatch.setattr(cli, "_runtime_check", lambda: "OK")  # host-dependent; tested below
     assert cli.main(["doctor"]) == 0
-    out = capsys.readouterr().out
+    out = _flat(capsys.readouterr().out)
     assert "[OK] Docker daemon access: server 29.0.0" in out
     # Present images are listed as present; which version each serves is said to be unchecked.
-    assert "[OK] prepared images: 1 inodefence-* image(s) present: inodefence-node" in out
-    assert "is not checked here" in out
-    assert "[OK] output folder base (environment)" in out
+    # Present images are counted and grouped by target; the names and the sentence that which
+    # version each serves is unchecked are in --details.
+    assert "[OK] prepared images: 1 inodefence-* image(s) present node-tar 1 " in out
+    assert "inodefence doctor --details" in out and "inodefence-node" not in out
+    assert cli.main(["doctor", "--details"]) == 0
+    details = _flat(capsys.readouterr().out)
+    assert "inodefence-node-tar-registry:7.5.2" in details and "is not checked here" in details
+    assert "[OK] output folder: " in out
     assert "no check failed" in out
 
 
@@ -428,7 +479,7 @@ def test_doctor_with_no_images_is_info_not_failure(monkeypatch, capsys) -> None:
     monkeypatch.setattr(cli, "_docker_server", lambda: ("OK", "server 29.9.3"))
     monkeypatch.setattr(cli, "_local_images", lambda: [])
     cli.main(["doctor"])
-    assert "[INFO] prepared images: none yet" in capsys.readouterr().out
+    assert "[INFO] prepared images: none yet" in _flat(capsys.readouterr().out)
 
 
 @pytest.mark.parametrize(
@@ -440,8 +491,8 @@ def test_doctor_runtime_root_outside_the_allowed_base_is_a_fail_without_sudo_adv
 ) -> None:
     monkeypatch.setenv("INODEFENCE_RUNTIME_ROOT", value)
     assert cli._runtime_check() == "FAIL"
-    out = capsys.readouterr().out
-    assert out.startswith(f"{expected} runtime directory") and "not allowed" in out
+    out = _flat(capsys.readouterr().out)
+    assert out.startswith(f"{expected} runtime dir (dev only)") and "not allowed" in out
     assert "sudo" not in out
 
 
@@ -450,7 +501,7 @@ def test_explicit_missing_config_file_is_an_error(monkeypatch, tmp_path: Path, c
     assert cli.main(["explore", "--version", "latest", "--dry-run"]) == 3
     assert "no such file" in capsys.readouterr().err
     cli.main(["doctor"])
-    assert "[FAIL] user config: INODEFENCE_CONFIG=" in capsys.readouterr().out
+    assert "[FAIL] user config: INODEFENCE_CONFIG=" in _flat(capsys.readouterr().out)
 
 
 def test_verify_dry_run_also_refuses_an_out_inside_the_repo(
@@ -467,7 +518,7 @@ def test_doctor_flags_an_output_base_inside_the_repo(monkeypatch, capsys, tmp_pa
     monkeypatch.setattr(cli, "repo_root", lambda: tmp_path)
     monkeypatch.setenv("INODEFENCE_OUTPUT_DIR", str(tmp_path / "out"))
     cli.main(["doctor"])
-    assert "[FAIL] output folder base (environment)" in capsys.readouterr().out
+    assert "[FAIL] output folder: " in _flat(capsys.readouterr().out)
 
 
 def _capture_driver(monkeypatch, root: Path) -> list:
@@ -488,7 +539,7 @@ def test_output_in_a_synced_looking_folder_warns(
     assert cli.main(["explore", "--version", "latest", "--auto-prepare"]) == 0
     assert calls and "cloud-synced" in capsys.readouterr().err
     cli.main(["doctor"])
-    assert "[WARN] output folder base (environment)" in capsys.readouterr().out
+    assert "[WARN] output folder: " in _flat(capsys.readouterr().out)
 
 
 def test_relative_out_is_resolved_against_the_callers_cwd(monkeypatch, tmp_path: Path) -> None:
@@ -546,7 +597,7 @@ def test_a_research_setting_in_the_user_config_is_refused(
     assert calls == []
     assert "Research settings" in capsys.readouterr().err
     cli.main(["doctor"])  # doctor still runs and reports it
-    assert "[FAIL] user config" in capsys.readouterr().out
+    assert "[FAIL] user config" in _flat(capsys.readouterr().out)
 
 
 def test_summary_renders_a_result_file(tmp_path: Path, capsys) -> None:
@@ -755,20 +806,25 @@ def test_doctor_adds_leftover_disk_and_memory_lines_and_keeps_the_old_ones(
     leftover = health.Residue(containers=("inodefence-local-controller-x (Exited (255))",))
     monkeypatch.setattr(cli, "_find_residue", lambda: leftover)
     cli.main(["doctor"])
-    out = capsys.readouterr().out
+    out = _flat(capsys.readouterr().out)
     # The existing lines are all still there, unchanged.
     assert "[OK] Docker daemon access: server 29.0.0" in out
-    assert "[OK] output folder base (environment)" in out
-    assert "[WARN] leftover containers / volumes (read-only; nothing is removed): " in out
-    assert "inodefence-local-controller-x" in out and "nothing was removed" in out
-    assert "free disk at the output folder base: " in out and "GiB free at" in out
-    assert "[UNKNOWN] memory headroom for Docker: " in out and "Windows commit limit" in out
+    assert "[OK] output folder: " in out
+    assert "[WARN] leftover from old runs: 1 container (nothing was removed)" in out
+    assert "inodefence doctor --details" in out and "inodefence-local-controller-x" not in out
+    assert "[OK] free disk: " in out and "GiB free at" in out
+    assert "[UNKNOWN] Docker memory: not checked on this host" in out
     lines = [line for line in out.splitlines() if line.startswith("[")]
     added = [
         i
         for i, line in enumerate(lines)
-        if line.split("] ", 1)[1].startswith(("leftover containers", "memory headroom"))
+        if line.split("] ", 1)[1].startswith(("leftover from old runs", "Docker memory"))
     ]
+    cli.main(["doctor", "--details"])
+    details = _flat(capsys.readouterr().out)
+    assert "container inodefence-local-controller-x (Exited (255))" in details
+    assert "nothing was removed. Inspect each first" in details
+    assert "[UNKNOWN] Docker memory: " in details and "Windows commit limit" in details
     assert added and min(added) > lines.index(
         next(line for line in lines if "prepared images" in line)
     )
@@ -780,11 +836,9 @@ def test_doctor_does_not_list_leftovers_without_a_usable_daemon(monkeypatch, cap
     monkeypatch.setattr(cli.shutil, "which", lambda name: "/usr/bin/docker")
     monkeypatch.setattr(cli, "_docker_server", lambda: ("UNKNOWN", "did not answer in 30s"))
     cli.main(["doctor"])
-    out = capsys.readouterr().out
+    out = _flat(capsys.readouterr().out)
     assert not asked
-    assert (
-        "[UNKNOWN] leftover containers / volumes (read-only; nothing is removed): not asked" in out
-    )
+    assert "[UNKNOWN] leftover from old runs: not asked" in out
 
 
 def test_doctor_memory_unknown_never_changes_the_exit_code(
@@ -797,8 +851,12 @@ def test_doctor_memory_unknown_never_changes_the_exit_code(
     monkeypatch.setenv("INODEFENCE_OUTPUT_DIR", str(tmp_path / "outputs"))
     monkeypatch.setattr(cli, "_runtime_check", lambda: "OK")
     assert cli.main(["doctor"]) == 0
-    out = capsys.readouterr().out
-    assert "[UNKNOWN] memory headroom for Docker: not checked: under Windows + WSL2 the" in out
+    out = _flat(capsys.readouterr().out)
+    assert "[UNKNOWN] Docker memory: not checked on this host" in out
+    assert "no check failed; 1 UNKNOWN (not verified, see above)" in out
+    assert cli.main(["doctor", "--details"]) == 0  # the background is in --details, same verdict
+    out = _flat(capsys.readouterr().out)
+    assert "[UNKNOWN] Docker memory: not checked: under Windows + WSL2 the" in out
     assert "no check failed; 1 UNKNOWN (not verified, see above)" in out
 
 
@@ -806,8 +864,8 @@ def test_doctor_memory_unknown_never_changes_the_exit_code(
 
 
 def _repository_line(capsys) -> str:
-    out = capsys.readouterr().out
-    return next(line for line in out.splitlines() if "] repository (" in line)
+    out = _flat(capsys.readouterr().out)
+    return next(line for line in out.splitlines() if "] repository: " in line)
 
 
 def test_doctor_names_an_inodefence_home_that_is_not_a_clone(
@@ -842,9 +900,7 @@ def test_doctor_says_which_clone_runs_and_what_the_environment_overrides(
     monkeypatch.setenv("INODEFENCE_HOME", str(repo))
     cli.main(["doctor"])
     line = _repository_line(capsys)
-    assert line.startswith(
-        f"[OK] repository (needed by targets / verify / explore / replay): {repo}"
-    )
+    assert line.startswith(f"[OK] repository: {repo}")
     assert "(INODEFENCE_HOME from the environment)" in line
     assert (
         "the config file's INODEFENCE_HOME=/from/the/file is overridden by the environment" in line
@@ -887,9 +943,9 @@ def test_a_relative_output_base_is_refused_by_the_commands_as_by_doctor(
     assert err.count("error: no --out given and INODEFENCE_OUTPUT_DIR=rel/out (") == 2
     assert "is not absolute" in err
     cli.main(["doctor"])
-    out = capsys.readouterr().out
-    assert "[FAIL] output folder base (" in out and "INODEFENCE_OUTPUT_DIR=rel/out (" in out
-    assert "[UNKNOWN] free disk at the output folder base: not checked (see above)" in out
+    out = _flat(capsys.readouterr().out)
+    assert "[FAIL] output folder: " in out and "INODEFENCE_OUTPUT_DIR=rel/out (" in out
+    assert "[UNKNOWN] free disk: not checked (see output folder)" in out
     # An explicit relative --out is still taken against the working directory (unchanged).
     assert cli.main(["verify", "--version", "7.5.2", "--dry-run", "--out", "x"]) == 0
     assert calls[0][1][-2:] == ["--out", str(tmp_path / "x")]
@@ -942,19 +998,19 @@ def test_doctor_names_the_running_code_and_warns_only_for_pythonpath(
     monkeypatch.setattr(cli, "_docker_checks", lambda: [])  # never the host's daemon
     monkeypatch.delenv("PYTHONPATH", raising=False)
     cli.main(["doctor"])
-    lines = [x for x in capsys.readouterr().out.splitlines() if x.startswith("[")]
-    (line,) = [x for x in lines if "inodefence code running" in x]
-    assert line == f"[INFO] inodefence code running doctor / status / summary: {code}"
-    assert lines[lines.index(line) + 1].split("] ", 1)[1].startswith("runtime directory")
+    lines = [x for x in _flat(capsys.readouterr().out).splitlines() if x.startswith("[")]
+    (line,) = [x for x in lines if "] inodefence code:" in x]
+    assert line == f"[INFO] inodefence code: {code}"
+    assert lines[lines.index(line) + 1].split("] ", 1)[1].startswith("runtime dir (dev only)")
 
     monkeypatch.setenv("PYTHONPATH", str(tmp_path))  # unrelated entry: still INFO
     cli.main(["doctor"])
-    assert "[INFO] inodefence code running" in capsys.readouterr().out
+    assert "[INFO] inodefence code:" in _flat(capsys.readouterr().out)
 
     monkeypatch.setenv("PYTHONPATH", str(code.parent))
     rc_with = cli.main(["doctor"])
-    out = capsys.readouterr().out
-    assert "[WARN] inodefence code running" in out and "loaded from PYTHONPATH entry" in out
+    out = _flat(capsys.readouterr().out)
+    assert "[WARN] inodefence code:" in out and "loaded from PYTHONPATH entry" in out
     monkeypatch.delenv("PYTHONPATH")
     assert cli.main(["doctor"]) == rc_with  # the WARN never changes the exit code
 
@@ -996,4 +1052,188 @@ def test_doctor_fails_an_output_base_that_is_a_file(monkeypatch, capsys, tmp_pat
     (tmp_path / "f").write_text("x", encoding="utf-8")
     monkeypatch.setenv("INODEFENCE_OUTPUT_DIR", str(tmp_path / "f"))
     cli.main(["doctor"])
-    assert "[FAIL] output folder base (environment)" in capsys.readouterr().out
+    assert "[FAIL] output folder: " in _flat(capsys.readouterr().out)
+
+
+# -- doctor layout (columns, summary vs --details, width, colour) ---------------------------------
+
+_MANY_IMAGES = (
+    [f"inodefence-node-tar-registry:7.5.{i}" for i in range(2, 41)]  # 39
+    + [f"inodefence-decompress-target:4.2.{i}" for i in range(10)]  # 10
+    + [f"inodefence-oras-go-selfdiscover:v2.6.{i}" for i in range(13)]  # 13
+    + ["inodefence-python-tarfile-runtime:3.15.2"]  # 1
+    + [f"inodefence-controller:b{i}" for i in range(4)]
+    + [f"inodefence-helper:b{i}" for i in range(4)]  # other 8
+)
+
+
+@pytest.fixture
+def _crowded_host(monkeypatch, tmp_path: Path):
+    """71 images and 22 leftovers (11 containers, 11 volumes), Docker answering OK (faked)."""
+    from inodefence.drivers.runtime import health
+
+    residue = health.Residue(
+        containers=tuple(f"inodefence-local-controller-{i:02d} (Exited (255))" for i in range(11)),
+        volumes=tuple(f"inodefence-local-runtime-{i:02d}" for i in range(11)),
+    )
+    monkeypatch.setattr(cli, "repo_root", lambda: tmp_path / "repo")
+    monkeypatch.setattr(cli.shutil, "which", lambda name: "/usr/bin/docker")
+    monkeypatch.setattr(cli, "_docker_server", lambda: ("OK", "server 29.0.0"))
+    monkeypatch.setattr(cli, "_local_images", lambda: sorted(_MANY_IMAGES))
+    monkeypatch.setattr(cli, "_find_residue", lambda: residue)
+    monkeypatch.setenv("INODEFENCE_OUTPUT_DIR", str(tmp_path / "outputs"))
+    monkeypatch.setattr(cli, "_PIPE_WIDTH", 100)  # the real pipe width, not the wide test one
+    return residue
+
+
+def _terminal(monkeypatch, columns: int) -> None:
+    monkeypatch.setattr(cli.sys.stdout, "isatty", lambda: True)
+    size = cli.os.terminal_size((columns, 24))
+    monkeypatch.setattr(cli.shutil, "get_terminal_size", lambda fallback=None: size)
+
+
+def test_the_image_groups_are_counted_by_target_from_the_name() -> None:
+    assert cli._image_groups(_MANY_IMAGES) == {
+        "node-tar": 39,
+        "decompress": 10,
+        "oras-go": 13,
+        "python-tarfile": 1,
+        "other": 8,
+    }
+    assert cli._image_groups(["registry.example/inodefence-oras-go-x:1"]) == {"oras-go": 1}
+
+
+def test_the_default_screen_counts_and_does_not_list_names(_crowded_host, capsys) -> None:
+    residue = _crowded_host
+    code = cli.main(["doctor"])
+    out = capsys.readouterr().out
+    lines = out.splitlines()
+    assert all(len(line) <= 100 for line in lines)
+    assert len(lines) <= 40  # 13 items, a few wrapped values, the summary
+    assert not any(image in out for image in _MANY_IMAGES)
+    assert not any(name.split(" ")[0] in out for name in residue.containers + residue.volumes)
+    items = {item["label"]: item for item in _doctor_items(out)}
+    images = items["prepared images"]
+    assert images["status"] == "OK" and images["values"][0] == "71 inodefence-* image(s) present"
+    groups = " ".join(images["values"][1:])
+    for part in ("node-tar 39", "decompress 10", "oras-go 13", "python-tarfile 1", "other 8"):
+        assert part in groups
+    assert images["hints"] == ["→ full list: inodefence doctor --details"]
+    leftover = items["leftover from old runs"]
+    assert leftover["status"] == "WARN"
+    assert leftover["values"] == ["11 containers, 11 volumes (nothing was removed)"]
+    assert leftover["hints"] == ["→ names and how to remove: inodefence doctor --details"]
+    # The verdicts and the exit code are the checks' own: a WARN does not fail doctor.
+    assert code == (0 if cli.sys.version_info[:2] == (3, 12) else 1)
+
+
+def test_details_lists_every_name_one_per_line(_crowded_host, capsys) -> None:
+    residue = _crowded_host
+    code = cli.main(["doctor", "--details"])
+    out = capsys.readouterr().out
+    stripped = [line.strip() for line in out.splitlines()]
+    for image in _MANY_IMAGES:
+        assert image in stripped
+    for name in residue.containers:
+        assert f"container {name}" in stripped
+    for name in residue.volumes:
+        assert f"volume {name}" in stripped
+    assert "Inspect each first" in out and "is not checked here" in out
+    assert code == cli.main(["doctor"])  # --details changes no verdict
+    capsys.readouterr()
+
+
+def test_no_colour_codes_when_stdout_is_not_a_terminal(_crowded_host, capsys) -> None:
+    cli.main(["doctor", "--details"])
+    assert "\x1b" not in capsys.readouterr().out
+
+
+def test_no_colour_codes_with_no_color_even_on_a_terminal(
+    _crowded_host, capsys, monkeypatch
+) -> None:
+    _terminal(monkeypatch, 120)
+    monkeypatch.setenv("NO_COLOR", "1")
+    cli.main(["doctor"])
+    assert "\x1b" not in capsys.readouterr().out
+    monkeypatch.delenv("NO_COLOR")
+    cli.main(["doctor"])
+    coloured = capsys.readouterr().out
+    assert "\x1b[33m[WARN]\x1b[0m" in coloured and "\x1b[32m[OK]\x1b[0m" in coloured
+
+
+@pytest.mark.parametrize("details", [False, True])
+def test_a_narrow_terminal_keeps_every_line_within_its_width(
+    _crowded_host, capsys, monkeypatch, details: bool
+) -> None:
+    _terminal(monkeypatch, 60)
+    monkeypatch.setenv("NO_COLOR", "1")
+    cli.main(["doctor", "--details"] if details else ["doctor"])
+    out = capsys.readouterr().out
+    assert all(len(line) <= 60 for line in out.splitlines())
+
+
+def _fail_and_warn_items(out: str) -> list[dict]:
+    return [item for item in _doctor_items(out) if item["status"] in ("FAIL", "WARN")]
+
+
+@pytest.mark.parametrize("scene", ["no-docker", "daemon-refused", "warnings"])
+def test_every_fail_and_warn_shows_its_next_step_on_the_default_screen(
+    capsys, monkeypatch, tmp_path: Path, scene: str
+) -> None:
+    """What is wrong and what to do next is on the default screen (a → line), never only in
+    --details: --details moves long lists and background only."""
+    from inodefence.drivers.runtime import health
+
+    monkeypatch.setattr(cli, "_PIPE_WIDTH", 100)
+    if scene == "no-docker":  # repository, output folder, Docker CLI, runtime dir: FAIL
+        monkeypatch.setattr(cli, "repo_root", lambda: None)
+        monkeypatch.setattr(cli.shutil, "which", lambda name: None)
+        monkeypatch.setenv("INODEFENCE_OUTPUT_DIR", "relative/out")
+        monkeypatch.setenv("INODEFENCE_RUNTIME_ROOT", "/tmp/elsewhere")
+        expected = {"repository", "output folder", "Docker CLI", "runtime dir (dev only)"}
+    elif scene == "daemon-refused":  # Docker daemon: FAIL with the fix after "; "
+        monkeypatch.setattr(cli, "repo_root", lambda: tmp_path / "repo")
+        monkeypatch.setattr(cli.shutil, "which", lambda name: "/usr/bin/docker")
+        monkeypatch.setattr(
+            cli,
+            "_docker_server",
+            lambda: ("FAIL", "permission denied; add your user to the docker group"),
+        )
+        monkeypatch.setenv("INODEFENCE_OUTPUT_DIR", str(tmp_path / "outputs"))
+        expected = {"Docker daemon access"}
+    else:  # WARN: cloud-synced output, leftovers, relative INODEFENCE_HOME, PYTHONPATH code
+        monkeypatch.setattr(cli, "repo_root", lambda: tmp_path / "repo")
+        monkeypatch.setenv("INODEFENCE_HOME", "clone")
+        monkeypatch.setenv("PYTHONPATH", str(cli._running_code().parent))
+        monkeypatch.setattr(cli.shutil, "which", lambda name: "/usr/bin/docker")
+        monkeypatch.setattr(cli, "_docker_server", lambda: ("OK", "server 29.0.0"))
+        monkeypatch.setattr(cli, "_local_images", lambda: [])
+        monkeypatch.setattr(
+            cli, "_find_residue", lambda: health.Residue(volumes=("inodefence-runtime-x",))
+        )
+        monkeypatch.setenv("INODEFENCE_OUTPUT_DIR", str(tmp_path / "Google Drive" / "out"))
+        expected = {"output folder", "leftover from old runs", "repository", "inodefence code"}
+    code = cli.main(["doctor"])
+    out = capsys.readouterr().out
+    flagged = _fail_and_warn_items(out)
+    assert expected <= {item["label"] for item in flagged}
+    for item in flagged:
+        assert item["hints"], f"{item['label']} ({item['status']}) has no → line"
+    if scene != "warnings":
+        assert code == 1  # a FAIL still fails doctor
+    if scene == "daemon-refused":
+        (daemon,) = [item for item in flagged if item["label"] == "Docker daemon access"]
+        assert daemon["values"] == ["permission denied"]
+        assert daemon["hints"] == ["→ add your user to the docker group"]
+
+
+def test_a_hint_starts_its_own_line_with_an_arrow(capsys, monkeypatch) -> None:
+    monkeypatch.setattr(cli, "_PIPE_WIDTH", 100)
+    monkeypatch.setattr(cli.shutil, "which", lambda name: "/usr/bin/docker")
+    monkeypatch.setattr(cli, "_docker_server", lambda: ("OK", "server 29.0.0"))
+    monkeypatch.setattr(cli, "_local_images", lambda: [])
+    cli.main(["doctor"])
+    out = capsys.readouterr().out
+    (images,) = [item for item in _doctor_items(out) if item["label"] == "prepared images"]
+    assert images["status"] == "INFO" and images["values"] == ["none yet"]
+    assert images["hints"] and images["hints"][0].startswith("→ which target/version")

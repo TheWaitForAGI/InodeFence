@@ -1429,6 +1429,8 @@ D060·D062는 기록으로 남는다. D061의 동결본은 정의 문서로 남�
 
 **2026-11-19 정정 (D065).** 위 "네 대상에 적용한다"의 범위가 node-tar·python-tarfile로 좁혀졌다. decompress·oras-go의 FAST는 재빌드 생략만 적용하고 신원 확인 간격은 적용하지 않는다. D065 참조. 공유 경로 파일의 D064 줄은 그대로다.
 
+**2026-11-19 정정 (D067).** 간격은 node-tar에만 남는다. python-tarfile의 FAST도 케이스마다 확인한다. node-tar의 수용은 7.5.2 · default · 예산 2000에서만 측정됐고(첫 측정 F3, 후속 측정 통과), 결과에 그 범위를 기록한다. D067 참조. 공유 경로 파일의 D064 줄은 그대로다.
+
 ## D065 — FAST: decompress·oras-go에는 D064 신원 확인 간격을 적용하지 않는다 (#536)
 
 **상태:** 확정 (2026-11-19, 지웅 승인 2026-11-19: '2b'; W4·IF-ORCH 방법 이의 없음)
@@ -1444,3 +1446,19 @@ D060·D062는 기록으로 남는다. D061의 동결본은 정의 문서로 남�
 - **한계**: 런처 직접 실행의 간격은 측정·수용된 모드가 아니며 그 출력은 수용 증거가 아니다.
 - **바뀌지 않는 것**: node-tar·python-tarfile의 FAST와 네 대상의 STRICT.
 - **다시 여는 조건(대상별 독립)**: 해당 대상의 FAST 생산자(같은 case 집합을 FAST로 n회)가 생기고, 그 대상에서 #536 수용(STRICT 대 FAST, 비교 도구 f523f63 종료 0, 같은 핀)을 통과하면 그 대상만 연다. 한 대상의 통과가 다른 대상을 열지 않는다.
+
+**2026-11-19 정정 (D067).** python-tarfile도 이 결정의 방식(재빌드 생략만, 케이스마다 확인)을 따른다. 표지의 `fast_acceptance`는 `criterion_met_no_violation_path_evidence`다. D067 참조.
+
+
+## D067 — FAST: node-tar만 D064 간격(측정한 범위를 기록), python-tarfile은 케이스마다 (#536)
+
+**상태:** 잠정 (2026-11-19, W1 판정 PASS, W4 독립 확인 대기. 확정되면 이 줄을 바꾼다)
+
+- **배경**: node-tar 7.5.2 · default 정책 · 예산 2000에서 첫 측정은 F3(판정 불가)였고, 결과 전에 고정한 후속 측정(W4 규칙 v3)은 통과했다: 세는 seed 5개(58005, 58006, 58009, 58010, 58014) 모두 비교 도구 f523f63 종료 0, 갈림 0/2000 step(엔진 3ca9c69). 이 조건에서 STRICT와 FAST의 궤적이 일치함을 확인한 것이고, 다른 버전·정책·예산·대상은 측정하지 않았다. 증거: 비공개 Drive 묶음(SHA256SUMS `17660d14`, 682 파일), 원장 141행. python-tarfile 57590: 실행 전 고정한 기준(compare exit 0)은 충족. 단 세 실행 모두 위반 0건이라 위반이 없는 실행에서의 궤적 일치(갈림 0/300)이며, 이 대상의 위반 경로에 대한 근거는 없다.
+- 〔W4 PASS 문단: 도착하면 원문 그대로 이 자리에〕
+- **결정**:
+  - node-tar의 `--profile fast`는 D064 간격(시작·200건마다·끝)을 유지한다. 결과의 `campaign.identity_checks`에 `fast_acceptance`와 측정 범위 `acceptance_scope`(version 7.5.2, policy default, budget 2000, counted_seeds 5, rule_sha)를 적는다. 그 실행이 이 범위와 정확히 같을 때만 `passed`이고, 그 밖의 버전·정책·예산에서는 간격은 그대로 켜되 `interval_on_unmeasured_scope`다(버전으로 간격을 끄지 않는다).
+  - python-tarfile의 `--profile fast`는 decompress·oras-go(D065)처럼 재빌드 생략만 적용하고 케이스마다 확인한다. 결과의 표지는 `per-case`, `fast_acceptance: criterion_met_no_violation_path_evidence`다(위 python-tarfile 문장).
+  - 공유 실행 경로 파일과 판정은 바뀌지 않는다.
+- **범위를 좁힌 근거**: 지웅의 말 "지금 실험 하는거의 후속으로 조치만 하고 다 일단락해보자 깃허브 푸쉬나 드라이브에 넣고". 후속 측정 결과대로 범위를 좁힌 것은 IF-ORCH 권고이고 명시적 선택 답은 없다. 범위를 좁히는 방향이라 기존 승인(D064)을 넘지 않는다.
+- **속도**: 케이스당 시간(HOST1 관찰값, 위 node-tar 조건의 후속 측정, 수용 기준 아님): STRICT 1.245 s, FAST 0.614 s. 이 조건 밖의 속도는 측정하지 않았다.

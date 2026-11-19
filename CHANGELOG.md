@@ -38,6 +38,7 @@
   그대로다. N=200은 고정이고 고르는 옵션은 없다. 호출자 환경의 `DEMO_IDENTITY_CHECK_EVERY`는 무시하고 경고 한 줄을 낸다.
   확인 사이에 남는 보호는 대상마다 다르다. node-tar는 실행 컨테이너 안의 worker가 매번 다시 확인하고, 나머지 셋은
   고정된 이미지 ID뿐이다. 시간 효과는 아직 재지 않았다.
+- D067(범위 정정, 잠정): D064 간격은 node-tar에만 남고 python-tarfile의 FAST도 케이스마다 확인한다. node-tar 7.5.2 · default 정책 · 예산 2000에서 첫 측정은 F3(판정 불가)였고, 결과 전에 고정한 후속 측정(W4 규칙 v3)은 통과했다: 세는 seed 5개(58005, 58006, 58009, 58010, 58014) 모두 비교 도구 f523f63 종료 0, 갈림 0/2000 step(엔진 3ca9c69). 이 조건에서 STRICT와 FAST의 궤적이 일치함을 확인한 것이고, 다른 버전·정책·예산·대상은 측정하지 않았다. node-tar FAST 결과는 `campaign.identity_checks`에 `fast_acceptance`(`passed`는 그 조건과 정확히 같을 때만, 그 밖은 `interval_on_unmeasured_scope`)와 `acceptance_scope`를 적는다. 케이스당 시간(HOST1 관찰값, 위 node-tar 조건의 후속 측정, 수용 기준 아님): STRICT 1.245 s, FAST 0.614 s. [D067](docs/DECISIONS.md)
 - D065(위 항목의 범위 정정): decompress·oras-go: FAST는 D064 신원확인 간격(수용 측정 없음)을 적용하지 않고 케이스마다 확인; 공용 이미지 재빌드 생략(0.2.0, 타이밍은 node-tar에서만 측정, 두 대상 per-target 속도 미측정)만 적용; 두 대상 FAST 수용은 측정 안 됨(FAST 생산자 없음). 결과의 `campaign.identity_checks`는 `per-case`(`interval: 1`, `fast_acceptance: not_measured`, `acceptance_evidence: false`, `total_checks` 없음)이고 실행 시작에 stderr 한 줄이 나온다. 런처 직접 실행의 간격은 측정·수용된 모드가 아니며 그 출력은 수용 증거가 아니다. [D065](docs/DECISIONS.md)
 - python-tarfile 탐색이 실행 중 스텝 전체(스냅숏·trace)를 메모리에 쌓지 않는다(#542). `result.json`과 `summary.md`는
   그대로다. 엔진 원시 보고서(`inodefence-python-tarfile-explore-*.json`)에서는 `steps` 배열이 빠지고 `streaming: true`가 붙는다.

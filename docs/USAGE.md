@@ -25,7 +25,7 @@ inodefence targets          # 추출기와 각 추출기가 지원하는 것(옵
 
 | 선택 | 설치 | 더해지는 것 |
 | --- | --- | --- |
-| `ui` | `pip install -e '.[ui]'` | 터미널 화면을 Rich로 그립니다(`doctor`·`targets`). 없으면 지금의 표준 라이브러리 화면입니다 |
+| `ui` | `pip install -e '.[ui]'` | 터미널 화면을 Rich로 그립니다(`doctor`·`targets`·`compare`, `verify`·`replay` 뒤 결과 화면, `explore` 진행 표시). 없으면 지금의 표준 라이브러리 화면입니다 |
 | `all` | `pip install -e '.[all]'` | 위의 것 전부 |
 
 터미널 대시보드(`inodefence tui`)와 로컬 웹 대시보드(`inodefence dashboard`)는 **아직 없습니다**(다음 단계).

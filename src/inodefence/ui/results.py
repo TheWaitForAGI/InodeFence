@@ -18,8 +18,8 @@ from rich.text import Text
 
 from inodefence.app.runs import ReadState, RunSummary
 from inodefence.ui import components as ui
-
-UNKNOWN = "?"
+from inodefence.ui.plain import UNKNOWN, identity, same_word, side_title, unknown_reason
+from inodefence.ui.plain import short as _short
 
 
 def _contract(value: bool | None) -> Text:
@@ -32,15 +32,7 @@ def _contract(value: bool | None) -> Text:
     return Text(UNKNOWN, style="if.warn")
 
 
-def _short(value: str | None, size: int = 12) -> str:
-    if not value:
-        return UNKNOWN
-    return value if len(value) <= size else value[:size] + "…"
-
-
-def _identity(summary: RunSummary) -> tuple[str | None, str | None]:
-    ref = summary.ref
-    return (ref.target, ref.version) if ref is not None else (None, None)
+_identity = identity
 
 
 def _subject(summary: RunSummary) -> str:
@@ -158,21 +150,12 @@ def verify_screen(summary: RunSummary, *, version: str) -> list[RenderableType]:
     return out
 
 
-def _same(same: bool | None, in_a: bool, in_b: bool) -> Text:
-    if not in_a:
-        return Text("only in B", style="if.warn")
-    if not in_b:
-        return Text("only in A", style="if.warn")
-    if same is True:
-        return ui.flag(True, "same")
-    if same is False:
-        return Text("✗ different", style="if.bad")
-    return Text(f"{UNKNOWN} unknown", style="if.warn")
+def _same(row: Any) -> Text:
+    word, tone = same_word(row)
+    return Text(word, style=f"if.{tone}")
 
 
-def _side_title(summary: RunSummary) -> str:
-    target, version = _identity(summary)
-    return " ".join(p for p in (target, version) if p) or str(summary.result_path or UNKNOWN)
+_side_title = side_title
 
 
 def _where(summary: RunSummary) -> Text:
@@ -196,10 +179,6 @@ def _verdict_cell(row: Any) -> Text:
             text.append(" ")
         text.append_text(_contract(value))
     return text
-
-
-def _one_line(row: Any) -> str:
-    return _verdict_cell(row).plain.replace("\n", " ")
 
 
 def _side_heading(side: str, summary: RunSummary) -> str:
@@ -253,7 +232,7 @@ def compare_screen(
         (
             [
                 Text(row.case_id, style="bold"),
-                _same(row.same_input, row.in_a, row.in_b),
+                _same(row),
                 Text(_short(row.tar_sha256_a), style="if.muted"),
                 Text(_short(row.tar_sha256_b), style="if.muted"),
                 _verdict_cell(row.a),
@@ -274,37 +253,11 @@ def compare_screen(
         lines.append(Text(f"{one_side} case(s): in one result only", style="if.warn"))
     if unknown:
         lines.append(
-            Text(
-                f"{unknown} case(s): unknown — no recorded SHA-256 on one side, so not called "
-                "the same input",
-                style="if.warn",
-            )
+            Text(f"unknown, so not called the same input: {unknown_reason(rows)}", style="if.warn")
         )
     title = "Same inputs, two results" if status == "PASS" else "Not every input is shown same"
     out.append(ui.result_panel(status, title, lines))
     return out
-
-
-def compare_plain_lines(a: RunSummary, b: RunSummary, rows: Sequence[Any]) -> list[str]:
-    """The comparison as plain text (pipes, files, no Rich): one line per case."""
-    lines = [f"A: {_side_title(a)}  {a.result_path}", f"B: {_side_title(b)}  {b.result_path}"]
-    for side, summary in (("A", a), ("B", b)):
-        if not summary.has_values:
-            lines.append(f"{side}: result {summary.read_state.value}: {summary.error}")
-            return lines
-        if summary.read_state is ReadState.UNVALIDATED:
-            lines.append(f"{side}: as stored, not validated: {summary.error}")
-    verdict_a = a.verdict.value if a.verdict else UNKNOWN
-    verdict_b = b.verdict.value if b.verdict else UNKNOWN
-    lines.append(f"verdict: A {verdict_a}  B {verdict_b}")
-    lines.append(f"{'case':24} {'input':10} {'sha256 A':14} {'sha256 B':14} {'A':14} B")
-    for row in rows:
-        same = _same(row.same_input, row.in_a, row.in_b).plain
-        lines.append(
-            f"{row.case_id:24} {same:10} {_short(row.tar_sha256_a):14} "
-            f"{_short(row.tar_sha256_b):14} {_one_line(row.a):14} {_one_line(row.b)}"
-        )
-    return lines
 
 
 _CONCLUSION_STATUS = {

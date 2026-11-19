@@ -21,19 +21,16 @@ inodefence = "inodefence.cli:main"
 
 [project.optional-dependencies]
 # The command itself needs none of these (dependencies = []). Each interface extra is optional:
-# `ui` draws the terminal with Rich (without it the plain screens are used); `tui` is for the
-# terminal dashboard, which is not in this version yet. A web extra is added together with the
-# web dashboard itself. Lower bounds: the stable releases installable on 2026-11-19 were
-# rich 15.0 and textual 8.2.
+# `ui` draws the terminal with Rich (without it the plain screens are used). The `tui` (Textual)
+# and web extras are added together with the commands that use them, not before. Lower bound:
+# the stable Rich release installable on 2026-11-19 was 15.0.
 ui = ["rich>=13"]
-tui = ["textual>=8", "rich>=13"]
-all = ["rich>=13", "textual>=8"]
+all = ["rich>=13"]
 dev = [
     "pytest>=8",
     "ruff>=0.8",
     "pyright>=1.1.400,<2",
     "rich>=13",  # so the Rich renderer is tested too (the plain one is tested with Rich blocked)
-    "textual>=8",  # so the TUI tests run in CI instead of skipping
 ]
 
 [tool.setuptools.packages.find]

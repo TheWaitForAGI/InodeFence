@@ -365,12 +365,14 @@ class Console:
 
     def compare(self, a: Any, b: Any, rows: Sequence[Any]) -> None:
         """Two results case by case (``app.runs.compare_results``)."""
-        from inodefence.ui import results
-
         if self._rich is None:
-            for line in results.compare_plain_lines(a, b, rows):
+            from inodefence.ui import plain  # standard library only: the default install
+
+            for line in plain.compare_lines(a, b, rows):
                 print(line, file=self.stream)
             return
+        from inodefence.ui import results  # imports Rich: only once Rich is in use
+
         self._print(*results.compare_screen(a, b, rows, version=self.version))
 
     # -- errors ------------------------------------------------------------------------------

@@ -23,6 +23,9 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.refresh <= 0:
         parser.error("--refresh must be > 0")
+    if not (sys.stdin.isatty() and sys.stdout.isatty()):
+        print("error: the TUI needs an interactive terminal (stdin and stdout)", file=sys.stderr)
+        return 3
     try:
         return run(extra=args.folders, refresh=args.refresh)
     except TuiUnavailable as error:

@@ -354,3 +354,42 @@ def test_list_artifacts_is_metadata_only_and_marks_missing(tmp_path: Path, monke
     (entry,) = list_artifacts(gone)
     assert entry.kind is ArtifactKind.RESULT and entry.read_state is ReadState.MISSING
     assert entry.size is None and entry.mtime is None
+
+
+def test_list_artifacts_never_follows_links_and_marks_unreadable(tmp_path: Path) -> None:
+    from inodefence.app.runs import ArtifactKind, list_artifacts
+
+    outside = tmp_path / "outside.bin"
+    outside.write_bytes(b"x" * 12345)
+    out, rid = syn.explore_out(tmp_path), syn.run_id()
+    result_dir = out / "target-explore" / f"{rid}-result"
+    syn.write_result(result_dir, syn.result(cases=[syn.case("step-2", True)], saved=["step-2"]))
+    tar = result_dir / "inputs" / "step-2.tar"
+    tar.unlink()
+    os.symlink(outside, tar)  # an input that is a link to a file outside the run folder
+    os.symlink(outside, result_dir / "runtime-record.json")
+    os.symlink(outside, out / "target-explore" / f"inodefence-effect-explore-{rid}.json")
+    entries = list_artifacts(runs.read_run(_explore_ref(out, rid)))
+    linked = [e for e in entries if e.symlink]
+    assert {e.kind for e in linked} == {ArtifactKind.INPUT_TAR, ArtifactKind.RUNTIME_RECORD}
+    assert all(e.size is None and e.read_state is ReadState.UNREADABLE for e in linked)
+    assert all(e.size != 12345 for e in entries)  # the outside file is never measured
+    assert ArtifactKind.LOOP_REPORT not in {e.kind for e in entries}  # globs skip links
+
+
+def test_an_entry_that_cannot_be_stat_ed_is_unreadable_not_ok(tmp_path: Path) -> None:
+    from inodefence.app.runs import ArtifactKind, list_artifacts
+
+    if os.geteuid() == 0:
+        pytest.skip("root stats any file")
+    cell = tmp_path / f"{syn.SYNTHETIC}-verify" / "node-tar-7.5.2"
+    syn.write_result(cell, syn.result(mode=syn.ResultMode.FIXTURE_REGRESSION, saved=["fixture"],
+                                      cases=[syn.case("fixture", False)]))  # fmt: skip
+    snap = runs.read_run(RunRef(RunKind.VERIFY, cell, cell.name))
+    os.chmod(cell / "inputs", 0)  # the input below cannot be stat-ed
+    try:
+        entries = list_artifacts(snap)
+    finally:
+        os.chmod(cell / "inputs", 0o755)
+    (tar,) = [e for e in entries if e.kind is ArtifactKind.INPUT_TAR]
+    assert tar.read_state is ReadState.UNREADABLE and tar.size is None

@@ -33,6 +33,7 @@ dev = [
     "ruff>=0.8",
     "pyright>=1.1.400,<2",
     "rich>=13",  # so the Rich renderer is tested too (the plain one is tested with Rich blocked)
+    "textual>=8",  # so the TUI tests run in CI instead of skipping
 ]
 
 [tool.setuptools.packages.find]

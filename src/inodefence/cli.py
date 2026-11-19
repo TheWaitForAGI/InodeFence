@@ -238,6 +238,27 @@ def cmd_tui(args: argparse.Namespace) -> int:
         return 3
 
 
+def cmd_dashboard(args: argparse.Namespace) -> int:
+    """The local read-only web dashboard (optional ``web`` extra). 0 when stopped (Ctrl-C),
+    3 when it did not start (no FastAPI/uvicorn, or the server could not start)."""
+    from inodefence.ui.web import WebUnavailable, run
+
+    try:
+        return run(extra=args.folders, repo_root=repo_root(), host=args.host, port=args.port)
+    except WebUnavailable as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 3
+    except SystemExit as stop:  # uvicorn exits when it cannot start (e.g. the port is taken)
+        if stop.code in (0, None):
+            return 0
+        print(
+            f"error: the dashboard did not start on {args.host}:{args.port} "
+            "(is the port already in use? try --port)",
+            file=sys.stderr,
+        )
+        return 3
+
+
 def cmd_compare(args: argparse.Namespace) -> int:
     from inodefence.app.runs import compare_results, read_result
     from inodefence.ui.console import Console
@@ -675,6 +696,18 @@ def build_parser() -> argparse.ArgumentParser:
         "--refresh", type=float, default=1.0, help="seconds between re-reads (default 1)"
     )
     tui.set_defaults(func=cmd_tui)
+
+    dashboard = sub.add_parser(
+        "dashboard",
+        help="local read-only web dashboard of the runs on this host (optional 'web' extra)",
+        epilog="exit codes: 0 stopped (Ctrl-C), 3 not started (no FastAPI/uvicorn, or the "
+        "server could not start). Serves 127.0.0.1 by default; reads the default output "
+        "folders plus FOLDER ...; starts, stops, deletes and writes nothing.",
+    )
+    dashboard.add_argument("folders", nargs="*", type=Path, metavar="FOLDER", help="extra folders")
+    dashboard.add_argument("--host", default="127.0.0.1", help="address (default 127.0.0.1)")
+    dashboard.add_argument("--port", type=int, default=8765, help="port (default 8765)")
+    dashboard.set_defaults(func=cmd_dashboard)
 
     return parser
 

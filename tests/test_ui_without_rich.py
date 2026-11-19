@@ -29,11 +29,13 @@ from inodefence.app import targets as targets_app
 from inodefence.ui import console
 
 UI = Path(__file__).resolve().parents[1] / "src" / "inodefence" / "ui"
-OPTIONAL = ("rich", "textual", "fastapi", "uvicorn")
+OPTIONAL = ("rich", "textual", "fastapi", "starlette", "uvicorn")
 #: Modules that import an optional package at module level, each loaded only lazily:
 #: components/results build Rich renderables (``ui/console.py`` imports them inside a method,
-#: once Rich is in use); tui/app defines Textual classes (only ``ui.tui.run`` imports it).
-RICH_ONLY = {"components.py", "results.py", "tui/app.py"}
+#: once Rich is in use); tui/app defines Textual classes (only ``ui.tui.run`` imports it);
+#: web/_app defines the FastAPI app on Starlette (only ``ui.web.create_app``/``run`` import it,
+#: pinned by tests/test_web_import.py).
+RICH_ONLY = {"components.py", "results.py", "tui/app.py", "web/_app.py"}
 FIXTURE = Path(__file__).parent / "fixtures" / "result-contract-v1" / "fixture-regression.json"
 
 
@@ -181,6 +183,14 @@ def test_tui_without_textual_is_one_line_and_exit_3(no_rich, monkeypatch, capsys
 def test_tui_off_a_terminal_starts_nothing(capsys) -> None:
     assert cli.main(["tui"]) == 3  # pytest's stdin/stdout are not a terminal
     assert "interactive terminal" in capsys.readouterr().err
+
+
+def test_dashboard_without_fastapi_is_one_line_and_exit_3(no_rich, monkeypatch, capsys) -> None:
+    for name in ("inodefence.ui.web._app",):
+        monkeypatch.delitem(sys.modules, name, raising=False)
+    assert cli.main(["dashboard"]) == 3
+    err = capsys.readouterr().err.strip().splitlines()
+    assert len(err) == 1 and "web" in err[0]
 
 
 def test_explore_progress_display(no_rich) -> None:

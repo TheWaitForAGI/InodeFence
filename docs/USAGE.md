@@ -27,9 +27,8 @@ inodefence targets          # 추출기와 각 추출기가 지원하는 것(옵
 | --- | --- | --- |
 | `ui` | `pip install -e '.[ui]'` | 터미널 화면을 Rich로 그립니다(`doctor`·`targets`·`compare`·`status`·`summary`, `verify`·`replay` 뒤 결과 화면, `explore` 진행 표시). 없으면 지금의 표준 라이브러리 화면입니다 |
 | `tui` | `pip install -e '.[tui]'` | 터미널 대시보드 `inodefence tui`(Textual). 아래 [터미널 대시보드](#터미널-대시보드tui) |
+| `web` | `pip install -e '.[web]'` | 로컬 웹 대시보드 `inodefence dashboard`(FastAPI·uvicorn). 아래 [웹 대시보드](#웹-대시보드dashboard) |
 | `all` | `pip install -e '.[all]'` | 위의 것 전부 |
-
-로컬 웹 대시보드(`inodefence dashboard`)는 **아직 없습니다**(다음 단계). 명령과 실행 시험이 함께 들어올 때 이 표에 적습니다.
 
 Rich는 stdout이 터미널이고 `NO_COLOR`가 없으며 `TERM`이 `dumb`가 아닐 때만 씁니다. 파이프·파일·`NO_COLOR`에서는
 Rich가 설치돼 있어도 표준 라이브러리 화면과 같은 글자가 나가고 색 코드는 없습니다. `targets --json`, `result.json`,
@@ -266,6 +265,23 @@ node-tar 탐색(`--version 7.5.23 --seed 123 --budget 20`, engineering smoke 202
 ```
 
 (`<버전>-<seed>-<budget>` 이름은 node-tar에서 관찰한 것입니다. 다른 대상의 결과 폴더 위치는 [도중 확인](#도중-확인) 절에 실측을 적었습니다.)
+
+## 웹 대시보드(`dashboard`)
+
+```bash
+pip install -e '.[web]'
+inodefence dashboard                    # http://127.0.0.1:8765 (기본 출력 폴더를 읽음)
+inodefence dashboard ~/other-out --port 8800
+```
+
+이 호스트의 실행 폴더를 브라우저에서 보는 **읽기 전용** 대시보드입니다. 기본으로 `127.0.0.1`에만 열립니다(`--host`로
+다른 주소를 주면 경고 한 줄). GET 요청만 받고, 실행을 시작·중지·삭제·재실행하거나 파일을 쓰지 않으며, 저장된 입력
+TAR의 내용은 보내지 않습니다(경로와 기록된 SHA-256만). 값은 `inodefence tui`와 같은 읽기 모델에서 오고 웹에서 다시
+계산하지 않습니다. 지금 화면은 **Overview**이고, Targets·Findings·Artifacts 등 나머지 페이지는 다음 단계입니다(화면에
+"coming in a later push"로 표시). API의 JSON 형식은 이 대시보드용이며 호환 약속이 아닙니다.
+
+종료 코드: Ctrl-C로 멈추면 0. FastAPI·uvicorn이 없거나(설치 안내 한 줄) 서버를 시작하지 못하면(포트 사용 중 등, 한 줄)
+3입니다.
 
 ## 실행 중 터미널 진행 표시
 
@@ -554,7 +570,7 @@ inodefence compare <A의 result.json> <B의 result.json>
 | 3 | 실행 전 거부 — 판정 없음: 사용법 오류(없는 옵션 값, `--budget 0` 등), 저장소 안 `--out`, 쓸 수 없는 `--out`(파일이거나 권한 없음), 상대 경로 `INODEFENCE_OUTPUT_DIR`, `--auto-prepare` 없음, 설정 파일 오류, 이미지·준비 문제, Docker가 이미지 질문에 답하지 않음(준비하지 않음), 같은 `--out`에 이 실행의 결과가 이미 있음(덮어쓰지 않음) 등 | 사용법 오류(`--rounds 0` 등), 이미지가 이 호스트에 없음, Docker가 이미지 질문에 답하지 않음, 같은 실행 이름의 컨트롤러·볼륨이 이미 있음, 저장소 안 폴더, 저장소를 못 찾음, 설정 파일 오류 | 저장소를 못 찾음, 설정 파일 오류 | — | — |
 | 4 | — | 이 대상은 재실행 미지원(지금 등록된 네 대상에는 해당 없음) | — | — | — |
 
-`tui`는 0(`q`로 종료), 3(시작하지 않음: Textual 없음, 대화형 터미널 아님, `--refresh`가 0 이하), 사용법 오류 2입니다.
+`tui`는 0(`q`로 종료), 3(시작하지 않음: Textual 없음, 대화형 터미널 아님, `--refresh`가 0 이하), 사용법 오류 2입니다. `dashboard`는 0(Ctrl-C로 멈춤), 3(시작하지 않음: FastAPI·uvicorn 없음, 서버 기동 실패), 사용법 오류 2입니다.
 
 `verify`·`explore`·`replay`는 종료 코드가 결과를 싣기 때문에 사용법 오류를 2로 내지 않고, 아무것도 실행하지
 않았다는 뜻의 3으로 냅니다(대상 드라이버와 같은 규칙). 판정을 싣지 않는 명령의 사용법 오류와, 하위

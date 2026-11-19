@@ -24,7 +24,12 @@ Rules every field follows, so no interface has to decide them again:
   judged rounds" (:class:`ReplayRecord`).
 - **Broken input is a state, not an exception.** ``result.json`` is not written atomically, so a
   file that does not parse is :attr:`ReadState.NOT_READY`; a missing, unreadable or foreign file is
-  reported as such. Keys a newer version adds are kept in ``extras``.
+  reported as such. Keys a newer version adds are kept in ``extras``; a result the strict reader
+  still refuses comes back as :attr:`ReadState.UNVALIDATED` with its stored values and the reason,
+  never as ``OK``.
+- **Coupling, on purpose:** the campaign key sets are the strict reader's own private
+  ``_CAMPAIGN_KEYS`` / ``_CAMPAIGN_OPTIONAL`` (``target_result.py`` is not changed for the UI);
+  ``tests/test_app_runs.py`` fails if they disappear, so the two never drift apart silently.
 - **Hashes are shown as recorded.** Re-hashing the saved inputs happens only on request
   (:func:`recheck_inputs`); until then :attr:`Integrity.rechecked` is ``False``.
 """
@@ -102,6 +107,9 @@ class ReadState(StrEnum):
     OK = "ok"
     #: The file exists but does not parse (``result.json`` is written in place, not atomically).
     NOT_READY = "not_ready"
+    #: The strict result reader refused it (e.g. written by a newer version): the values are the
+    #: stored ones, NOT validated. Show them only with that mark and ``RunSummary.error``.
+    UNVALIDATED = "unvalidated"
     #: Present but not readable as this record (permissions, wrong schema, invalid content).
     UNREADABLE = "unreadable"
     MISSING = "missing"
@@ -276,7 +284,8 @@ class Integrity:
 class RunSummary:
     ref: RunRef | None
     read_state: ReadState
-    #: ``True``: the strict result reader accepted the file. ``False``: values are as stored.
+    #: ``True``: the strict result reader accepted the file (``read_state`` OK). ``False`` with
+    #: values: ``read_state`` is UNVALIDATED and the values are as stored (see ``error``).
     validated: bool = False
     result_path: Path | None = None
     verdict: Verdict | None = None
@@ -299,6 +308,11 @@ class RunSummary:
     #: campaign keys this reader does not know (a newer version's), as stored
     extras: Mapping[str, Any] = field(default_factory=dict)
     error: str | None = None
+
+    @property
+    def has_values(self) -> bool:
+        """Values were read: validated (``OK``) or as stored (``UNVALIDATED``, show the mark)."""
+        return self.read_state in (ReadState.OK, ReadState.UNVALIDATED)
 
 
 @dataclass(frozen=True, slots=True)
@@ -599,7 +613,7 @@ def _summary_as_stored(
     known_terminations = {k: v for k, v in terminations.items() if v is not None}
     return RunSummary(
         ref=ref,
-        read_state=ReadState.OK,
+        read_state=ReadState.UNVALIDATED,
         validated=False,
         result_path=path,
         verdict=Verdict(verdict) if verdict in Verdict.__members__ else None,
@@ -926,7 +940,7 @@ def read_run(ref: RunRef, *, now: float | None = None) -> RunSnapshot:
             errors.append(summary.error)
         ref = _with_axes(ref, summary)
         progress = None
-        if summary.read_state is ReadState.OK:
+        if summary.has_values:
             progress = _progress_from_summary(summary)
         return RunSnapshot(
             ref, read_at, progress=progress, summary=replace(summary, ref=ref),
@@ -961,7 +975,7 @@ def read_run(ref: RunRef, *, now: float | None = None) -> RunSnapshot:
         if raw is not None:
             progress = _progress(progress_reader.counts_from_progress(raw, cases), raw, step)
         findings = [_row_from_live_case(case, live) for case in cases or ()]
-    if summary is not None and summary.read_state is ReadState.OK and progress is None:
+    if summary is not None and summary.has_values and progress is None:
         progress = replace(_progress_from_summary(summary), launcher_step=step)
     if progress is None:
         progress = RunProgress(
@@ -992,7 +1006,7 @@ def read_run(ref: RunRef, *, now: float | None = None) -> RunSnapshot:
 
 
 def _with_axes(ref: RunRef, summary: RunSummary) -> RunRef:
-    if summary.read_state is not ReadState.OK or summary.result_path is None:
+    if not summary.has_values or summary.result_path is None:
         return ref
     data, state, _ = _load_json(summary.result_path)
     if state is not ReadState.OK or not isinstance(data, Mapping):

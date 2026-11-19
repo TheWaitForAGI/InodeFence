@@ -223,12 +223,10 @@ def diff_snapshots(previous: RunSnapshot | None, current: RunSnapshot) -> list[U
 
     # result ready (once it parses)
     was_ready = (
-        previous is not None
-        and previous.summary is not None
-        and previous.summary.read_state is ReadState.OK
+        previous is not None and previous.summary is not None and previous.summary.has_values
     )
     summary = current.summary
-    if summary is not None and summary.read_state is ReadState.OK and not was_ready:
+    if summary is not None and summary.has_values and not was_ready:
         events.append(
             _event(
                 ref,

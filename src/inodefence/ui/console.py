@@ -161,6 +161,9 @@ class Console:
         from rich.table import Table
         from rich.text import Text
 
+        assert self._rich is not None
+        # The value column: what is left after the status (7) and name (22) columns and padding.
+        value_width = max(self._rich.size.width - 7 - 22 - 4, 20)
         table = Table(box=None, show_header=False, pad_edge=False, padding=(0, 2, 0, 0))
         table.add_column(no_wrap=True)
         table.add_column(no_wrap=True)
@@ -168,7 +171,9 @@ class Console:
         for item in items:
             value = Text(item.value)
             if item.parts:
-                value.append("\n" + " · ".join(item.parts))
+                # A part ("node-tar 39") never breaks inside: lines break only between parts.
+                for line in pack(item.parts, " · ", value_width):
+                    value.append("\n" + line)
             for line in item.more:
                 value.append("\n" + line)
             for hint in item.hints:

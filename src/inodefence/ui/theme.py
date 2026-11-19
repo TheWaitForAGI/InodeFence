@@ -3,7 +3,7 @@
 Screens never name a colour; they name what it means:
 
 - ``accent``: brand, headings, panel titles (cyan); ``border``: thin panel borders (darker cyan);
-- ``ok``: a confirmed positive -- OK, PASS, a reproduced finding, a check that held (green);
+- ``ok``: a good outcome -- OK, PASS, a reproduced finding, a check that held (green);
 - ``warn``: needs a look -- WARN, UNKNOWN, an undecided or unjudged value, a stalled run, a
   candidate that needs a reproduction check, a result shown as stored (amber);
 - ``bad``: a failure or a judged violation -- FAIL, ERROR, a contract violated, a harness error

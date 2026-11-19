@@ -499,6 +499,158 @@ class Display:
         self.message(format_line(view))
 
 
+def _rich_lines(view: View) -> list[tuple[str, str]]:
+    """The live area's text lines (style, text), from the same fields as :func:`format_line`.
+
+    Unknown stays ``?``; nothing is computed that the progress line does not show.
+    """
+    counts = view.counts
+    version = view.version if view.version_exact else f"{view.version}(requested)"
+    lines = [("bold", f"{view.target} {version} · profile {view.profile} · seed {view.seed}")]
+    lines.append(
+        (
+            "",
+            " · ".join(f"{name} {_show(counts.terminations.get(name))}" for name in STATUSES)
+            + f" · un-judged {_show(counts.unjudged)}",
+        )
+    )
+    bound = ">=" if counts.contracts_lower_bound else "="
+    contracts = " ".join(
+        f"{key.upper()}{'=' if counts.contracts.get(key) is None else bound}"
+        f"{_show(counts.contracts.get(key))}"
+        for key in CONTRACT_KEYS
+    )
+    style = "red" if counts.violations else ""
+    lines.append((style, f"violations {_show(counts.violations)} ({contracts})"))
+    rate = counts.runs_per_second
+    pace = f"{rate} runs/s" if rate is not None else f"{UNKNOWN} runs/s"
+    if view.eta_seconds is not None:
+        pace += f" · eta ~{duration(view.eta_seconds)}"
+    if view.elapsed_seconds is not None:
+        pace += f" · elapsed {duration(view.elapsed_seconds)}"
+    if view.snapshot_age is not None and view.phase == RUNNING:
+        pace += f" · numbers as of {duration(view.snapshot_age)} ago"
+    lines.append(("dim", pace))
+    if view.step and view.phase in (RUNNING, CLEANUP):
+        lines.append(("dim", f"launcher step: {view.step}"))
+    return lines
+
+
+class RichDisplay:
+    """The same progress as :class:`Display`, drawn with Rich on an interactive terminal.
+
+    A live area (a progress bar of runs against the budget and the counts below it) is redrawn
+    in place. Lines that stay -- the header, the driver's own output, the version note, a failure's
+    log tail -- are written to their own streams exactly as :class:`Display` writes them, with the
+    live area paused around them. :meth:`final` clears the live area and prints the same last
+    line as :class:`Display` (:func:`format_line`), so what remains on the screen and what other
+    tools read is unchanged. Used only when Rich imports (see :func:`select_display`).
+    """
+
+    terminal = True
+
+    def __init__(self, stream: TextIO, *, width: Callable[[], int] | None = None) -> None:
+        from rich.console import Console
+        from rich.live import Live
+
+        self.stream = stream
+        self._width = width or Display(stream, terminal=True)._terminal_width
+        self._lock = threading.RLock()
+        self._console = Console(
+            file=stream, force_terminal=True, highlight=False, width=self._width()
+        )
+        self._live = Live(console=self._console, auto_refresh=False, transient=True)
+        self._started = False
+
+    def _render(self, view: View) -> Any:
+        from rich.console import Group
+        from rich.progress_bar import ProgressBar
+        from rich.table import Table
+        from rich.text import Text
+
+        runs = view.counts.runs
+        head = Table.grid(padding=(0, 1))
+        head.add_column(no_wrap=True)
+        head.add_column(ratio=1)
+        head.add_column(no_wrap=True)
+        label = Text(f"{PREFIX} {view.phase}", style="bold")
+        if runs is None or view.budget <= 0:
+            bar: Any = Text("")
+            done = f"runs {UNKNOWN}/{view.budget}"
+        else:
+            bar = ProgressBar(total=view.budget, completed=min(runs, view.budget))
+            done = f"{runs}/{view.budget} runs ({100 * runs // view.budget}%)"
+        head.add_row(label, bar, Text(done))
+        body = [Text(text, style=style) for style, text in _rich_lines(view)]
+        return Group(head, *body)
+
+    def _start(self) -> None:
+        if not self._started:
+            try:
+                self._live.start()
+                self._started = True
+            except Exception:  # noqa: BLE001 - a display fault must never stop the run
+                pass
+
+    def _pause(self) -> None:
+        if self._started:
+            try:
+                self._live.stop()
+            except Exception:  # noqa: BLE001
+                pass
+            self._started = False
+
+    def _write(self, stream: TextIO, text: str) -> None:
+        try:
+            stream.write(text)
+            stream.flush()
+        except (OSError, ValueError):
+            pass  # a closed terminal must never stop the run
+
+    def update(self, view: View) -> bool:
+        with self._lock:
+            try:
+                self._live.update(self._render(view), refresh=False)
+                self._start()
+                self._live.refresh()
+            except Exception:  # noqa: BLE001
+                return False
+            return True
+
+    def message(self, text: str) -> None:
+        with self._lock:
+            self._pause()
+            self._write(self.stream, text if text.endswith("\n") else text + "\n")
+
+    def passthrough(self, stream: TextIO, text: str) -> None:
+        with self._lock:
+            self._pause()
+            self._write(stream, text)
+
+    def final(self, view: View) -> None:
+        """Clear the live area, then the same last line as :class:`Display` prints."""
+        self.message(format_line(view))
+
+
+def select_display(
+    stream: TextIO, environ: Mapping[str, str] | None = None
+) -> Display | RichDisplay:
+    """The progress display for ``stream``: Rich on an interactive terminal when Rich imports and
+    ``NO_COLOR`` is not set, else :class:`Display` (in-place line on a terminal, lines elsewhere).
+
+    The explore driver runs in the clone's interpreter; when Rich is not installed there (it is
+    the optional ``ui`` extra) the import fails and the plain display is used, silently.
+    """
+    env = os.environ if environ is None else environ
+    terminal = is_terminal(stream, env)
+    if terminal and "NO_COLOR" not in env:
+        try:
+            return RichDisplay(stream)
+        except Exception:  # noqa: BLE001 - ImportError, or Rich refusing the stream
+            pass
+    return Display(stream, terminal=terminal)
+
+
 class _Passthrough(io.TextIOBase):
     """Stands in for ``sys.stdout`` / ``sys.stderr`` while the file descriptors point at the log.
 
@@ -506,7 +658,7 @@ class _Passthrough(io.TextIOBase):
     after the in-place status line is cleared; only inherited child output goes to the log.
     """
 
-    def __init__(self, target: TextIO, display: Display | None) -> None:
+    def __init__(self, target: TextIO, display: Display | RichDisplay | None) -> None:
         super().__init__()
         self._target = target
         self._display = display
@@ -575,7 +727,7 @@ class LauncherLog:
         self.out = os.fdopen(out_fd, "w", encoding="utf-8", errors="replace", closefd=False)
         self.err = os.fdopen(err_fd, "w", encoding="utf-8", errors="replace", closefd=False)
 
-    def attach(self, display: Display | None) -> None:
+    def attach(self, display: Display | RichDisplay | None) -> None:
         """Route the driver's own prints to the real streams (through ``display`` if given)."""
         assert self.out is not None and self.err is not None
         sys.stdout = _Passthrough(self.out, display)
@@ -682,7 +834,7 @@ class ExploreProgress:
         self._error: BaseException | None = None
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
-        self.display: Display | None = None
+        self.display: Display | RichDisplay | None = None
         self.log: LauncherLog | None = None
 
     # ---- what the files say ----
@@ -784,7 +936,7 @@ class ExploreProgress:
         if self.mode == PROGRESS:
             stream = self._stream or log.err
             assert stream is not None
-            self.display = Display(stream, terminal=is_terminal(stream, self._environ))
+            self.display = select_display(stream, self._environ)
         log.attach(self.display)
         if self.display is not None:
             self.display.message(header_line(self.view(), log.path))

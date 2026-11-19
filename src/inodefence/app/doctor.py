@@ -299,19 +299,66 @@ def _docker_checks(details: bool) -> list[Item]:
 _IMAGE_TARGETS = ("python-tarfile", "node-tar", "decompress", "oras-go")
 
 
+def _image_target(image: str) -> str:
+    """The target an image (``repo:tag``) is counted under, from its repository name only.
+
+    The name must be ``inodefence-<target>`` or begin ``inodefence-<target>-``: a target name
+    elsewhere in it (``inodefence-helper-node-tar``) or a longer word (``inodefence-node-tarball``)
+    is "other".
+    """
+    name = image.split(":", 1)[0].split("/")[-1].removeprefix("inodefence-")
+    return next((t for t in _IMAGE_TARGETS if name == t or name.startswith(f"{t}-")), "other")
+
+
+#: Display order of the groups.
+IMAGE_GROUP_ORDER = ("node-tar", "decompress", "oras-go", "python-tarfile", "other")
+
+
 def _image_groups(images: Sequence[str]) -> dict[str, int]:
     """How many of ``images`` (``repo:tag``) belong to each target, in a fixed order; read from
     the name only (what each image serves is not checked here)."""
-    counts: Counter[str] = Counter()
+    counts: Counter[str] = Counter(_image_target(image) for image in images)
+    return {name: counts[name] for name in IMAGE_GROUP_ORDER if counts[name]}
+
+
+@dataclass(frozen=True)
+class PreparedImages:
+    """The local ``inodefence-*`` images, grouped by target from their names (read-only).
+
+    ``by_target`` maps a group (a target name or "other") to its ``repo:tag`` names, in
+    :data:`IMAGE_GROUP_ORDER`; a group with no image is absent. Which version or option each
+    image serves is not checked (as in doctor).
+    """
+
+    by_target: dict[str, tuple[str, ...]]
+
+    @property
+    def counts(self) -> dict[str, int]:
+        return {name: len(images) for name, images in self.by_target.items()}
+
+    @property
+    def total(self) -> int:
+        return sum(len(images) for images in self.by_target.values())
+
+
+def prepared_images() -> PreparedImages | None:
+    """The local images by target, or ``None`` when Docker could not list them (unknown -- not
+    zero). Asks ``docker images`` once; changes nothing."""
+    images = _local_images()
+    if images is None:
+        return None
+    grouped: dict[str, list[str]] = {}
     for image in images:
-        name = image.split(":", 1)[0].split("/")[-1].removeprefix("inodefence-")
-        # The repository name must be ``inodefence-<target>`` or begin ``inodefence-<target>-``: a
-        # target name elsewhere in it (``inodefence-helper-node-tar``) or a longer word
-        # (``inodefence-node-tarball``) is "other".
-        target = next((t for t in _IMAGE_TARGETS if name == t or name.startswith(f"{t}-")), None)
-        counts[target or "other"] += 1
-    order = ("node-tar", "decompress", "oras-go", "python-tarfile", "other")
-    return {name: counts[name] for name in order if counts[name]}
+        grouped.setdefault(_image_target(image), []).append(image)
+    return PreparedImages(
+        {name: tuple(grouped[name]) for name in IMAGE_GROUP_ORDER if name in grouped}
+    )
+
+
+def image_groups() -> dict[str, int] | None:
+    """Per-target image counts (``prepared_images().counts``), or ``None`` when unknown."""
+    images = prepared_images()
+    return None if images is None else images.counts
 
 
 def _find_residue():

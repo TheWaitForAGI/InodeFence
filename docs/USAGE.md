@@ -26,9 +26,10 @@ inodefence targets          # 추출기와 각 추출기가 지원하는 것(옵
 | 선택 | 설치 | 더해지는 것 |
 | --- | --- | --- |
 | `ui` | `pip install -e '.[ui]'` | 터미널 화면을 Rich로 그립니다(`doctor`·`targets`). 없으면 지금의 표준 라이브러리 화면입니다 |
-| `tui` | `pip install -e '.[tui]'` | `inodefence tui`(터미널 대시보드) |
-| `web` | `pip install -e '.[web]'` | `inodefence dashboard`(로컬 웹 대시보드, 127.0.0.1) |
-| `all` | `pip install -e '.[all]'` | 위 셋 |
+| `all` | `pip install -e '.[all]'` | 위의 것 전부 |
+
+터미널 대시보드(`inodefence tui`)와 로컬 웹 대시보드(`inodefence dashboard`)는 **아직 없습니다**(다음 단계).
+명령과 실행 시험이 함께 들어올 때 이 표에 적습니다.
 
 Rich는 stdout이 터미널이고 `NO_COLOR`가 없으며 `TERM`이 `dumb`가 아닐 때만 씁니다. 파이프·파일·`NO_COLOR`에서는
 Rich가 설치돼 있어도 표준 라이브러리 화면과 같은 글자가 나가고 색 코드는 없습니다. `targets --json`, `result.json`,

@@ -1454,11 +1454,35 @@ D060·D062는 기록으로 남는다. D061의 동결본은 정의 문서로 남�
 
 **상태:** 확정 (2026-11-19, W1 판정 PASS, W4 독립 확인 완료; IF-ORCH D-ORCH-1119-418)
 
-- **배경**: node-tar 7.5.2 · default 정책 · 예산 2000에서 첫 측정은 F3(판정 불가)였고, 결과 전에 고정한 후속 측정(W4 규칙 v3)은 통과했다: 세는 seed 5개(58005, 58006, 58009, 58010, 58014) 모두 비교 도구 f523f63 종료 0, 갈림 0/2000 step(엔진 3ca9c69). 이 조건에서 STRICT와 FAST의 궤적이 일치함을 확인한 것이고, 다른 버전·정책·예산·대상은 측정하지 않았다. 증거: 비공개 Drive 묶음(SHA256SUMS `17660d14`, 682 파일), 원장 141행. python-tarfile 57590: 실행 전 고정한 기준(compare exit 0)은 충족. 단 세 실행 모두 위반 0건이라 위반이 없는 실행에서의 궤적 일치(갈림 0/300)이며, 이 대상의 위반 경로에 대한 근거는 없다.
-- 〔W4 PASS 문단: 도착하면 원문 그대로 이 자리에〕
+- **배경**: node-tar 7.5.2 · default 정책 · 예산 2000에서 첫 측정은 F3(판정 불가)였고, 결과 전에 고정한 후속 측정(W4 규칙 v3)은 통과했다: 세는 seed 5개(58005, 58006, 58009, 58010, 58014) 모두 비교 도구 f523f63 종료 0, 갈림 0/2000 step(엔진 3ca9c69). 이 조건에서 STRICT와 FAST의 궤적이 일치함을 확인한 것이고, 다른 버전·정책·예산·대상은 측정하지 않았다. 증거: 비공개 Drive 묶음(SHA256SUMS `17660d14`, 682 파일; 계수 집합 봉인 SEAL.tsv SHA-256 `9f8763d973b8bad981b68479e1f9cfe08291a3ed47ab534ebf448e59482f2d1c`), 원장 141행. python-tarfile 57590: 실행 전 고정한 기준(compare exit 0)은 충족. 단 세 실행 모두 위반 0건이라 위반이 없는 실행에서의 궤적 일치(갈림 0/300)이며, 이 대상의 위반 경로에 대한 근거는 없다.
+- **W4 결과 문단**(독립 판정, 2026-11-19. 원문은 비공개 Drive 파일 sha256 `c9ede40b…`이고, 아래는 운영 세부(재시작 횟수 일부, 호스트 로컬 경로)만 뺀 원문 그대로다):
+
+  > **#536 FAST 후속 수용 측정 — 결과 문단 (W4 독립 판정, 2026-11-19)**
+  >
+  > out-of-registration, 등록 결과와 비pool. 규칙 v3 시작-동결(sha 37651dbe). W4 독립 확인 완료.
+  >
+  > **판정: (A) PASS → 갈래 P**
+  >
+  > node-tar **7.5.2 / default 정책 / 예산 2000**에서, 사전 고정 규칙(v3; 계수 seed = STRICT 위반 ≥1, N_min 3, 2단계 STRICT 선행 → 계수집합 봉인 → FAST)으로 신원검사 간격 완화(identity_check_every) FAST의 **궤적 동일성**을 측정했다.
+  >
+  > - 봉인된 새 seed 배치(58001–58014)의 STRICT 선행에서 **계수 seed 5개**(58005·58006·58009·58010·58014; 위반 21·9·6·3·29)가 N_min 3을 충족했고, 계수 집합을 **FAST 실행 전에 sha 봉인**(SEAL.tsv 9f8763d9, result.json sha 포함). 비계수 9 seed(위반 0)는 FAST 미실행(설계).
+  > - **5 계수 seed 전부**에서 STRICT·FAST 궤적이 **2000/2000 단계 발산 0**으로 합치(compare exit 0, comparator f523f63). 위반 사례 수가 STRICT와 동일(21·9·6·3·29), 최초 위반 run 동일(658·1623·1619·1722·597). **per-pair image_id·engine 게이트 통과**(동일 frozen 이미지 sha256:22c8734f…·엔진 3ca9c69). FAST 신원검사 각 12회.
+  > - 임의 계수 seed **compare exit 1(발산) 0**. run 내부 재시작 0, 절단·재실행 0(운영 기록은 비공개 Drive 묶음).
+  >
+  > → 규칙 v3 §2: PASS = 전 계수 seed compare exit 0 ∧ 계수 ≥ N_min 3 — **둘 다 충족(5/5 exit 0, 5 ≥ 3)**. 간격 완화 FAST가 이 조건에서 STRICT 궤적을 보존함이 **측정으로 확증**됐다.
+  >
+  > **단서 (범위·기작)**
+  >
+  > - **기작**: 간격 완화는 **oracle 판정(C0/C1/C2)이 아니라** 실행-이미지·artifact integrity probe의 빈도를 완화한다(node_tar_effect.py:195, architecture #45). oracle 판정·관찰은 STRICT·FAST 모두 **케이스마다**로 간격과 독립. 그래서 이 측정이 확증하는 것은 "간격을 완화해도 궤적(입력 해시·케이스 순서·C0-C2·feedback 키·코퍼스)이 STRICT와 같다"이다(위반을 놓치는지가 아님).
+  > - **수용 범위**: **7.5.2/default/예산 2000에 한정**(계수 5). 다른 버전·정책·예산은 **미측정**. 다만 (a′) 간격 완화는 궤적을 바꿀 기작이 없고(probe는 궤적 입력 아님), (b′) STRICT 위반 0 조건(예: 7.5.7/v2)에선 놓칠 것이 없으며, (c′) fail-closed(probe 불일치 시 캠페인 무효)·케이스별 컨테이너 내 6-해시 재확인(간격 무관)·content-addressed image_id 핀이 받친다. "FAST가 모든 조건에서 궤적을 보존한다"로 일반화하지 않는다.
+  > - **갈래 P 귀결**: node-tar는 간격 완화 유지; python-tarfile·decompress·oras-go는 끈다. node-tar 수용 범위 매칭 실행 마커 `fast_acceptance:"passed"` + `acceptance_scope{version 7.5.2, policy default, budget 2000, counted_seeds 5, rule v3 37651dbe}`; 범위 밖 node-tar FAST는 `"interval_on_unmeasured_scope"`. (제품 a/b/a+ 최종 선택은 지웅.)
+  >
+  > 번들: `followup-20261119/`(SHA256SUMS 17660d14, 682 파일), FINAL.md, SEAL.tsv(9f8763d9), compare-*.json 5.
+
+  문단의 `counted_seeds 5`는 W4의 원문 표기다. 코드의 마커는 그 다섯 seed의 목록(`[58005, 58006, 58009, 58010, 58014]`)과 사람용 `rule: "W4 v3"`, 64자리 `rule_sha`를 적는다(W4 권고: 마커만으로 seed와 규칙이 복구되게).
 - **결정**:
-  - node-tar의 `--profile fast`는 D064 간격(시작·200건마다·끝)을 유지한다. 결과의 `campaign.identity_checks`에 `fast_acceptance`와 측정 범위 `acceptance_scope`(version 7.5.2, policy default, budget 2000, counted_seeds 5, rule_sha)를 적는다. 그 실행이 이 범위와 정확히 같을 때만 `passed`이고, 그 밖의 버전·정책·예산에서는 간격은 그대로 켜되 `interval_on_unmeasured_scope`다(버전으로 간격을 끄지 않는다).
+  - node-tar의 `--profile fast`는 D064 간격(시작·200건마다·끝)을 유지한다. 결과의 `campaign.identity_checks`에 `fast_acceptance`와 측정 범위 `acceptance_scope`(version 7.5.2, policy default, budget 2000, counted_seeds `[58005, 58006, 58009, 58010, 58014]`, rule `W4 v3`, rule_sha `37651dbeb2aa6e353732fdb6640b7e7f375aa50c91053d0598ab2f6af18417a0`)를 적는다. 그 실행이 이 범위와 정확히 같을 때만 `passed`이고, 그 밖의 버전·정책·예산에서는 간격은 그대로 켜되 `interval_on_unmeasured_scope`다(버전으로 간격을 끄지 않는다).
   - python-tarfile의 `--profile fast`는 decompress·oras-go(D065)처럼 재빌드 생략만 적용하고 케이스마다 확인한다. 결과의 표지는 `per-case`, `fast_acceptance: criterion_met_no_violation_path_evidence`다(위 python-tarfile 문장).
   - 공유 실행 경로 파일과 판정은 바뀌지 않는다.
-- **범위를 좁힌 근거**: 지웅의 말 "지금 실험 하는거의 후속으로 조치만 하고 다 일단락해보자 깃허브 푸쉬나 드라이브에 넣고". 후속 측정 결과대로 범위를 좁힌 것은 IF-ORCH 권고이고 명시적 선택 답은 없다. 범위를 좁히는 방향이라 기존 승인(D064)을 넘지 않는다.
+- **범위를 좁힌 근거**: 지웅의 말 "지금 실험 하는거의 후속으로 조치만 하고 다 일단락해보자 깃허브 푸쉬나 드라이브에 넣고". 측정 결과대로 싣는 것은 IF-ORCH 권고이고 명시적 선택 답은 없다(W4 문단의 "제품 a/b/a+ 최종 선택은 지웅"). 승인 범위(D064)를 좁히는 방향이라 기존 승인을 넘지 않는다.
 - **속도**: 케이스당 시간(HOST1 관찰값, 위 node-tar 조건의 후속 측정, 수용 기준 아님): STRICT 1.245 s, FAST 0.614 s. 이 조건 밖의 속도는 측정하지 않았다.

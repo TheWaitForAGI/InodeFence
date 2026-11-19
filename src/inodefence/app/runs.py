@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import json
 import os
+import stat
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, fields, replace
 from enum import StrEnum
@@ -1099,6 +1100,8 @@ class ArtifactEntry:
     mtime: float | None = None
     tar_sha256: str | None = None
     case_id: str | None = None
+    #: a symbolic link, listed but not followed (``read_state`` UNREADABLE, no size)
+    symlink: bool = False
 
 
 def _entry(
@@ -1107,14 +1110,19 @@ def _entry(
     read_state: ReadState | None = None,
     **extra: Any,
 ) -> ArtifactEntry:
-    """Stat ``path`` (never open it). ``read_state`` given: what a reader already found."""
+    """``lstat`` ``path`` (never open it, never follow a link). ``read_state`` given: what a
+    reader already found. A symbolic link is listed as itself (``symlink=True``, not read, no
+    size): what it points to -- possibly outside the run folder -- is not looked at."""
     try:
-        info = path.stat()
+        info = path.lstat()
     except FileNotFoundError:
         return ArtifactEntry(kind, path, ReadState.MISSING, **extra)
     except OSError:
         return ArtifactEntry(kind, path, ReadState.UNREADABLE, **extra)
-    size = None if path.is_dir() else info.st_size
+    if stat.S_ISLNK(info.st_mode):
+        return ArtifactEntry(kind, path, ReadState.UNREADABLE, None, info.st_mtime,
+                             symlink=True, **extra)  # fmt: skip
+    size = None if stat.S_ISDIR(info.st_mode) else info.st_size
     return ArtifactEntry(kind, path, read_state or ReadState.OK, size, info.st_mtime, **extra)
 
 

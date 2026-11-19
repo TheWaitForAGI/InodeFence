@@ -1,0 +1,586 @@
+"""What the TUI shows, as plain labelled cells (no Textual here; unit-tested on its own).
+
+Every value comes from :mod:`inodefence.app` (runs, events, doctor, targets). This module only
+formats: an unknown value is ``?`` (a count) or ``—`` (a field), never ``0``; every coloured cell
+also carries a text label, so the screen reads the same without colour; nothing says "confirmed"
+or "vulnerability" -- a violation is a *candidate* and a replay says how many judged rounds
+reproduced it.
+"""
+
+from __future__ import annotations
+
+import time
+from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass, field
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+from inodefence.app.events import EventKind, TimeSource, UiEvent
+from inodefence.app.runs import (
+    LIVE_PULL_INTERVAL_SECONDS,
+    CaseRow,
+    FindingClass,
+    Judgment,
+    ReadState,
+    ReplayRecord,
+    RunKind,
+    RunListing,
+    RunSnapshot,
+    Source,
+    Verdict,
+)
+
+#: A ``running`` snapshot older than this is shown as stalled, not active.
+ACTIVE_MAX_AGE_SECONDS = 4 * LIVE_PULL_INTERVAL_SECONDS
+UNKNOWN = "?"
+NONE = "—"
+
+# Cell styles (the app maps them to colours; the text never depends on them).
+OK, WARN, BAD, DIM, ACCENT, PLAIN = "ok", "warn", "bad", "dim", "accent", ""
+
+
+@dataclass(frozen=True, slots=True)
+class Cell:
+    text: str
+    style: str = PLAIN
+
+
+@dataclass(frozen=True, slots=True)
+class Row:
+    key: str
+    cells: tuple[Cell, ...]
+
+
+@dataclass
+class DashboardState:
+    """Everything one screen refresh draws, read by the app from :mod:`inodefence.app`."""
+
+    snapshots: Mapping[str, RunSnapshot] = field(default_factory=dict)
+    listings: Sequence[RunListing] = ()
+    events: Sequence[UiEvent] = ()
+    #: ``(status, summary)`` of the doctor report; ``None`` while checking or unavailable
+    engine: tuple[str, str] | None = None
+    engine_error: str | None = None
+    #: ``{target: {feature: value}}`` from the registry, or ``None`` when it could not be read
+    targets: Mapping[str, Mapping[str, Any]] | None = None
+    targets_error: str | None = None
+    #: ``{target: prepared image count}`` from doctor's image groups, when doctor gave it
+    images: Mapping[str, int] | None = None
+    #: the folders this screen scans (shown as is, so a synthetic demo folder is visible as such)
+    roots: Sequence[Path] = ()
+    now: float = field(default_factory=time.time)
+
+
+def count(value: int | None) -> str:
+    return UNKNOWN if value is None else str(value)
+
+
+def text(value: object) -> str:
+    return NONE if value is None or value == "" else str(value)
+
+
+def ago(seconds: float | None) -> str:
+    if seconds is None:
+        return UNKNOWN
+    seconds = max(seconds, 0.0)
+    if seconds < 120:
+        return f"{seconds:.0f}s ago"
+    if seconds < 7200:
+        return f"{seconds / 60:.0f}m ago"
+    return f"{seconds / 3600:.1f}h ago"
+
+
+def short_sha(value: str | None, keep: int = 12) -> str:
+    if not value:
+        return NONE
+    head, _, tail = value.partition(":")
+    return f"{head}:{tail[:keep]}" if tail else value[:keep]
+
+
+def contract_cell(value: bool | None) -> Cell:
+    """``V`` violated, ``-`` judged not violated, ``?`` not judged or not observed."""
+    if value is True:
+        return Cell("V", BAD)
+    if value is False:
+        return Cell("-", PLAIN)
+    return Cell("?", DIM)
+
+
+def verdict_cell(verdict: Verdict | None, validated: bool = True) -> Cell:
+    if verdict is None:
+        return Cell("no result", DIM)
+    suffix = "" if validated else " (as stored)"
+    style = {Verdict.PASS: OK, Verdict.FAIL: BAD, Verdict.ERROR: WARN}[verdict]
+    return Cell(verdict.value + suffix, style)
+
+
+def finding_class_cell(finding: FindingClass | None) -> Cell:
+    if finding is FindingClass.CANDIDATE:
+        return Cell("candidate", BAD)
+    if finding is FindingClass.CANDIDATE_NEEDS_REPRO_CHECK:
+        return Cell("needs repro check", WARN)
+    return Cell(NONE, DIM)
+
+
+def judgment_cell(judgment: Judgment) -> Cell:
+    if judgment is Judgment.RUN_ERROR:
+        return Cell("run error", BAD)
+    if judgment is Judgment.UNJUDGED:
+        return Cell("unjudged", WARN)
+    return Cell("judged", PLAIN)
+
+
+def replay_cell(records: Sequence[ReplayRecord]) -> Cell:
+    """The newest readable replay: conclusion, same contracts n/judged, rounds done."""
+    readable = [r for r in records if r.read_state is ReadState.OK]
+    if not readable:
+        return Cell("no replay", DIM)
+    record = readable[-1]
+    conclusion = record.conclusion.value if record.conclusion else UNKNOWN
+    if record.judged == 0:
+        detail = f"0 judged of {count(record.rounds_done)}"
+    else:
+        detail = (
+            f"{count(record.same_contracts)}/{count(record.judged)} judged, "
+            f"{count(record.rounds_done)} rounds"
+        )
+    style = {
+        "reproduced_violation": OK,
+        "partially_reproduced": WARN,
+        "not_reproduced": WARN,
+        "unjudged": WARN,
+        "infrastructure_failure": BAD,
+    }.get(conclusion, PLAIN)
+    return Cell(f"{conclusion} · {detail}", style)
+
+
+def run_state(snapshot: RunSnapshot, now: float) -> Cell:
+    """The run's state as the files say it; a running snapshot gone quiet is "stalled"."""
+    progress = snapshot.progress
+    summary = snapshot.summary
+    if progress is not None and progress.source is Source.LIVE and progress.state is not None:
+        if progress.state == "running":
+            age = snapshot.progress_age(now)
+            if age is None:
+                return Cell("running (age ?)", WARN)
+            if age > ACTIVE_MAX_AGE_SECONDS:
+                return Cell(f"stalled ({ago(age)})", WARN)
+            return Cell("running", ACCENT)
+        style = {"finished": OK, "stopped": WARN, "failed": BAD}.get(progress.state, PLAIN)
+        return Cell(progress.state, style)
+    if summary is not None:
+        if summary.read_state is ReadState.OK:
+            return Cell("finished", OK)
+        if summary.read_state is ReadState.UNVALIDATED:
+            return Cell("finished (as stored, not validated)", WARN)
+        if summary.read_state is ReadState.NOT_READY:
+            return Cell("result not ready", WARN)
+        return Cell(f"result {summary.read_state.value}", WARN)
+    # No live folder and no result: only node-tar writes running numbers, so this is not "stalled".
+    return Cell("no live data", DIM)
+
+
+def is_active(snapshot: RunSnapshot, now: float) -> bool:
+    return run_state(snapshot, now).text == "running"
+
+
+def is_stalled(snapshot: RunSnapshot, now: float) -> bool:
+    return run_state(snapshot, now).text.startswith("stalled")
+
+
+def source_cell(snapshot: RunSnapshot) -> Cell:
+    progress = snapshot.progress
+    if progress is None:
+        return Cell("none", DIM)
+    if progress.source is Source.LAUNCHER_LOG:
+        return Cell(f"launcher-log est. ({text(progress.launcher_step)})", DIM)
+    return Cell(progress.source.value, DIM if progress.source is Source.NONE else PLAIN)
+
+
+def _explore(state: DashboardState) -> list[RunSnapshot]:
+    return [s for s in state.snapshots.values() if s.ref.kind is RunKind.EXPLORE]
+
+
+def _verify(state: DashboardState) -> list[RunSnapshot]:
+    return [s for s in state.snapshots.values() if s.ref.kind is RunKind.VERIFY]
+
+
+def _replays(state: DashboardState) -> list[ReplayRecord]:
+    found: dict[str, ReplayRecord] = {}
+    for snapshot in state.snapshots.values():
+        for record in snapshot.replays:
+            found[str(record.path)] = record
+    return list(found.values())
+
+
+def findings(state: DashboardState) -> list[tuple[RunSnapshot, CaseRow]]:
+    out = []
+    for snapshot in state.snapshots.values():
+        if snapshot.ref.kind is RunKind.REPLAY:
+            continue
+        out += [(snapshot, row) for row in snapshot.findings]
+    return out
+
+
+def _replays_for(snapshot: RunSnapshot, row: CaseRow, every: Sequence[ReplayRecord]):
+    own = [r for r in snapshot.replays if r.original_case_id == row.case_id]
+    if own:
+        return own
+    if row.input_path is not None:
+        folder = row.input_path.parent
+        return [r for r in every if r.path.parent.name.startswith(f"{folder.name}.replay-")]
+    return []
+
+
+# -- header, overview ------------------------------------------------------------------------------
+
+
+def engine_cell(state: DashboardState) -> Cell:
+    if state.engine is None:
+        return Cell("unavailable" if state.engine_error else "checking…", DIM)
+    status, _ = state.engine
+    return Cell(status, {"OK": OK, "FAIL": BAD}.get(status, WARN))
+
+
+def header(state: DashboardState, selected: RunSnapshot | None) -> tuple[Cell, ...]:
+    active = sum(is_active(s, state.now) for s in _explore(state))
+    stalled = sum(is_stalled(s, state.now) for s in _explore(state))
+    run = NONE
+    status = Cell(NONE, DIM)
+    if selected is not None:
+        ref = selected.ref
+        run = f"{text(ref.target)}@{text(ref.version)}"
+        status = run_state(selected, state.now)
+    return (
+        Cell("InodeFence", ACCENT),
+        Cell("engine "),
+        engine_cell(state),
+        Cell(f"active {active}", ACCENT if active else PLAIN),
+        Cell(f"stalled {stalled}", WARN if stalled else DIM),
+        Cell(run),
+        status,
+    )
+
+
+def overview_rows(state: DashboardState) -> list[Row]:
+    explore, verify = _explore(state), _verify(state)
+    all_findings = findings(state)
+    needs = sum(r.finding is FindingClass.CANDIDATE_NEEDS_REPRO_CHECK for _, r in all_findings)
+    unread = sum(item.read_state is not ReadState.OK for item in state.listings)
+    engine = engine_cell(state)
+    engine_text = engine.text if state.engine is None else f"{engine.text} · {state.engine[1]}"
+    targets = (
+        Cell(str(len(state.targets)))
+        if state.targets is not None
+        else Cell(f"unknown ({state.targets_error or 'registry not read'})", DIM)
+    )
+    finished = sum(run_state(s, state.now).text == "finished" for s in explore)
+    rows = [
+        ("system", Cell(engine_text, engine.style), "doctor"),
+        ("targets registered", targets, "registry"),
+        ("active campaigns", Cell(str(sum(is_active(s, state.now) for s in explore))), "live"),
+        ("stalled", Cell(str(sum(is_stalled(s, state.now) for s in explore))), "live"),
+        ("finished explore runs", Cell(str(finished)), "result"),
+        ("verify cells", Cell(str(len(verify))), "result"),
+        ("violation candidates", Cell(str(len(all_findings)), BAD if all_findings else PLAIN),
+         "live / result"),
+        ("  needing a repro check", Cell(str(needs), WARN if needs else PLAIN), "live / result"),
+        ("  by replay", Cell(replay_breakdown(state)), "replay.json"),
+        ("replays", Cell(str(len(_replays(state)))), "replay.json"),
+        ("folders not read", Cell(str(unread), WARN if unread else PLAIN), "scan"),
+    ]  # fmt: skip
+    return [Row(label, (Cell(label), value, Cell(src, DIM))) for label, value, src in rows]
+
+
+READ_ONLY_NOTE = "read-only · reads existing run folders · starts, stops and deletes nothing"
+
+
+def replay_breakdown(state: DashboardState) -> str:
+    """Candidates by their newest replay's conclusion, so a candidate count never reads as
+    "all reproduced": ``reproduced n · partially n · not reproduced n · other n · no replay n``."""
+    every = _replays(state)
+    counts = {"reproduced": 0, "partially": 0, "not reproduced": 0, "other": 0, "no replay": 0}
+    for snapshot, row in findings(state):
+        readable = [r for r in _replays_for(snapshot, row, every) if r.read_state is ReadState.OK]
+        if not readable or readable[-1].conclusion is None:
+            counts["no replay"] += 1
+            continue
+        name = readable[-1].conclusion.value
+        key = {
+            "reproduced_violation": "reproduced",
+            "partially_reproduced": "partially",
+            "not_reproduced": "not reproduced",
+        }.get(name, "other")
+        counts[key] += 1
+    return " · ".join(f"{name} {value}" for name, value in counts.items())
+
+
+def scanned_lines(state: DashboardState) -> list[str]:
+    return [READ_ONLY_NOTE, *(f"scanning {root}" for root in state.roots)]
+
+
+# -- targets ---------------------------------------------------------------------------------------
+
+
+def target_rows(state: DashboardState) -> list[Row]:
+    if state.targets is None:
+        return []
+    last: dict[str, RunSnapshot] = {}
+    for snapshot in _verify(state):
+        target = snapshot.ref.target
+        if target is None or snapshot.summary is None or snapshot.summary.result_path is None:
+            continue
+        if target not in last or _mtime(snapshot.summary.result_path) > _mtime(
+            last[target].summary.result_path  # type: ignore[union-attr]
+        ):
+            last[target] = snapshot
+    rows = []
+    for name, feats in state.targets.items():
+        explore = "yes" if feats.get("explore") else "no"
+        replay = "yes" if feats.get("replay") else "no"
+        images = (
+            Cell(str(state.images[name]))
+            if state.images is not None and name in state.images
+            else Cell(NONE, DIM)
+        )
+        if name in last:
+            snap = last[name]
+            summary = snap.summary
+            assert summary is not None
+            verdict = verdict_cell(summary.verdict, summary.validated)
+            when = _clock(_mtime(summary.result_path))
+            verified = Cell(f"{text(snap.ref.version)} · {verdict.text} · {when}", verdict.style)
+        else:
+            verified = Cell(NONE, DIM)
+        rows.append(Row(name, (Cell(name, ACCENT), Cell(explore), Cell(replay), images, verified)))
+    return rows
+
+
+def _mtime(path: Path | None) -> float:
+    if path is None:
+        return 0.0
+    try:
+        return path.stat().st_mtime
+    except OSError:
+        return 0.0
+
+
+def _clock(epoch: float) -> str:
+    return datetime.fromtimestamp(epoch).strftime("%Y-%m-%d %H:%M") if epoch else NONE
+
+
+# -- campaigns -------------------------------------------------------------------------------------
+
+
+def campaign_rows(state: DashboardState) -> list[Row]:
+    rows = []
+    ordered = sorted(_explore(state), key=lambda s: s.read_at - (s.progress_age() or 0))
+    for snapshot in reversed(ordered):
+        p, ref = snapshot.progress, snapshot.ref
+        runs = f"{count(p.runs if p else None)}/{count(p.budget if p else None)}"
+        rate = (
+            f"{p.runs_per_second * 60:.1f}/min"
+            if p is not None and p.runs_per_second is not None
+            else UNKNOWN
+        )
+        violations = p.violations if p else None
+        rows.append(
+            Row(
+                ref.key,
+                (
+                    Cell(text(ref.run_id), ACCENT),
+                    Cell(text(ref.target)),
+                    Cell(text(ref.version)),
+                    run_state(snapshot, state.now),
+                    Cell(runs),
+                    Cell(rate),
+                    Cell(count(violations), BAD if violations else PLAIN),
+                    Cell(count(p.unjudged if p else None)),
+                    Cell(ago(snapshot.progress_age(state.now)), DIM),
+                    source_cell(snapshot),
+                ),
+            )
+        )
+    return rows
+
+
+def verify_rows(state: DashboardState) -> list[Row]:
+    rows = []
+    for snapshot in sorted(_verify(state), key=lambda s: str(s.ref.root)):
+        summary = snapshot.summary
+        if summary is None or not summary.has_values:
+            state_text = summary.read_state.value if summary else "missing"
+            cells = (Cell(text(snapshot.ref.run_id), ACCENT), Cell(state_text, WARN),
+                     Cell(UNKNOWN), Cell(UNKNOWN), Cell(UNKNOWN), Cell(NONE, DIM))  # fmt: skip
+            rows.append(Row(snapshot.ref.key, cells))
+            continue
+        warning = Cell("no extraction", WARN) if summary.no_extraction_warning else Cell(NONE, DIM)
+        rows.append(
+            Row(
+                snapshot.ref.key,
+                (
+                    Cell(text(snapshot.ref.run_id), ACCENT),
+                    verdict_cell(summary.verdict, summary.validated),
+                    Cell(count(summary.executed)),
+                    Cell(count(summary.errored), BAD if summary.errored else PLAIN),
+                    Cell(count(summary.unjudged_steps), WARN if summary.unjudged_steps else PLAIN),
+                    warning,
+                ),
+            )
+        )
+    return rows
+
+
+# -- findings --------------------------------------------------------------------------------------
+
+
+def finding_key(snapshot: RunSnapshot, row: CaseRow) -> str:
+    return f"{snapshot.ref.key}#{row.case_id}"
+
+
+def finding_rows(state: DashboardState) -> list[Row]:
+    every = _replays(state)
+    rows = []
+    for snapshot, row in findings(state):
+        ref = snapshot.ref
+        location = row.input_path.parent if row.input_path is not None else None
+        rows.append(
+            Row(
+                finding_key(snapshot, row),
+                (
+                    Cell(row.case_id, ACCENT),
+                    Cell(f"{text(ref.target)}@{text(ref.version)}"),
+                    contract_cell(row.c0),
+                    contract_cell(row.c1),
+                    contract_cell(row.c2),
+                    finding_class_cell(row.finding),
+                    Cell(row.termination.value),
+                    replay_cell(_replays_for(snapshot, row, every)),
+                    Cell(text(location), DIM),
+                ),
+            )
+        )
+    return rows
+
+
+def finding_detail(state: DashboardState, key: str) -> list[tuple[str, Cell]]:
+    every = _replays(state)
+    for snapshot, row in findings(state):
+        if finding_key(snapshot, row) != key:
+            continue
+        lines: list[tuple[str, Cell]] = [
+            ("case", Cell(row.case_id, ACCENT)),
+            ("run", Cell(text(snapshot.ref.run_id))),
+            ("target", Cell(f"{text(snapshot.ref.target)}@{text(snapshot.ref.version)}")),
+            ("class", finding_class_cell(row.finding)),
+            ("C0 / C1 / C2", Cell(" ".join(contract_cell(v).text for v in row.contracts.values()))),
+            ("termination", Cell(row.termination.value)),
+            ("judgment", judgment_cell(row.judgment)),
+            ("observation complete", Cell(text(row.observation_complete))),
+            ("fingerprints", Cell(", ".join(row.fingerprints) or NONE)),
+            ("input SHA-256", Cell(text(row.tar_sha256))),
+            ("input file", Cell(text(row.input_path), DIM)),
+            ("recorded", Cell(text(row.recorded_at), DIM)),
+        ]
+        for record in _replays_for(snapshot, row, every):
+            lines.append(("replay", replay_cell([record])))
+            lines.append(("  folder", Cell(str(record.path.parent), DIM)))
+            for entry in record.rounds:
+                verdicts = " ".join(contract_cell(v).text for v in (entry.c0, entry.c1, entry.c2))
+                lines.append(
+                    (f"  round {count(entry.round)}",
+                     Cell(f"{text(entry.classification)} · {text(entry.termination)} · {verdicts}"))
+                )  # fmt: skip
+        return lines
+    return []
+
+
+# -- artifacts -------------------------------------------------------------------------------------
+
+
+def artifact_lines(snapshot: RunSnapshot | None) -> list[tuple[str, Cell]]:
+    if snapshot is None:
+        return [("run", Cell("select a run in Campaigns or Findings", DIM))]
+    ref = snapshot.ref
+    lines: list[tuple[str, Cell]] = [
+        ("run", Cell(f"{ref.kind.value} {text(ref.run_id)}", ACCENT)),
+        ("folder", Cell(str(ref.root), DIM)),
+        ("target", Cell(f"{text(ref.target)}@{text(ref.version)}")),
+    ]
+    summary = snapshot.summary
+    if summary is None:
+        lines.append(("result.json", Cell("not written yet", DIM)))
+    else:
+        state = summary.read_state.value + ("" if summary.validated else ", as stored")
+        lines.append(("result.json", Cell(f"{text(summary.result_path)} ({state})")))
+        lines.append(("verdict", verdict_cell(summary.verdict, summary.validated)))
+        integrity = summary.integrity
+        if integrity is not None:
+            dirty = " (dirty)" if integrity.engine_dirty else ""
+            lines += [
+                ("engine", Cell(f"{short_sha(integrity.engine_sha)}{dirty}")),
+                ("image", Cell(text(integrity.image_ref))),
+                ("image id", Cell(short_sha(integrity.image_id, 20))),
+                ("lock / worker", Cell(f"{short_sha(integrity.lock_sha256)} / "
+                                       f"{short_sha(integrity.worker_sha256)}")),
+                ("inputs", Cell(f"{len(integrity.inputs)} saved, "
+                                + ("re-checked" if integrity.rechecked else "not re-checked"))),
+            ]  # fmt: skip
+            for case_id, sha, path in integrity.inputs[:20]:
+                lines.append((f"  {case_id}", Cell(f"{short_sha(sha)} {path}", DIM)))
+        if summary.extras:
+            lines.append(("newer keys", Cell(", ".join(sorted(summary.extras)), DIM)))
+        if summary.error:
+            lines.append(("note", Cell(summary.error, WARN)))
+    if ref.kind is RunKind.EXPLORE:
+        lines.append(("runtime folder", Cell(str(ref.root / "runtime"), DIM)))
+        live = ref.root / "target-explore" / (ref.run_id or "") / "live"
+        lines.append(("live folder", Cell(str(live) if live.is_dir() else NONE, DIM)))
+        step = snapshot.progress.launcher_step if snapshot.progress else None
+        log = f"{text(snapshot.launcher_log)} (last step est.: {text(step)})"
+        lines.append(("launcher log", Cell(log, DIM)))
+    for record in snapshot.replays:
+        lines.append(("replay", replay_cell([record])))
+        lines.append(("  replay.json", Cell(str(record.path), DIM)))
+    for error in snapshot.read_errors:
+        lines.append(("read problem", Cell(error, WARN)))
+    return lines
+
+
+# -- events ----------------------------------------------------------------------------------------
+
+_TIME_ABBREV = {
+    TimeSource.UPDATED_AT: "u",
+    TimeSource.RECORDED_AT: "r",
+    TimeSource.MTIME: "m",
+    TimeSource.OBSERVED: "o",
+}
+
+
+def event_line(event: UiEvent) -> Cell:
+    clock = event.timestamp[11:19] if len(event.timestamp) >= 19 else event.timestamp
+    run = event.run_id or NONE
+    parts = [f"{clock}{_TIME_ABBREV.get(event.time_source, '?')}", event.kind.value, run]
+    if event.progress_current is not None or event.progress_total is not None:
+        parts.append(f"{count(event.progress_current)}/{count(event.progress_total)}")
+    for value in (event.status, event.verdict, event.case_id, event.message):
+        if value:
+            parts.append(str(value))
+    if event.estimated:
+        parts.append("est.")
+    style = PLAIN
+    if event.kind is EventKind.READ_ERROR:
+        parts[1] = "READ"
+        style = WARN
+    elif event.kind is EventKind.VIOLATION_CASE:
+        style = BAD
+    elif event.kind is EventKind.RESULT_READY:
+        style = {"PASS": OK, "FAIL": BAD, "ERROR": WARN}.get(event.verdict or "", PLAIN)
+    elif event.estimated:
+        style = DIM
+    return Cell(" ".join(parts), style)
+
+
+def recent(events: Iterable[UiEvent], limit: int) -> list[UiEvent]:
+    return list(events)[-limit:]

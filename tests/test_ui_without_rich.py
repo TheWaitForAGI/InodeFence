@@ -2,9 +2,10 @@
 
 Two guards:
 
-* AST rule: no module under ``inodefence/ui`` imports ``rich``/``textual``/``fastapi`` at module
-  level, except the Rich renderable builders listed in ``RICH_ONLY``; those are imported only
-  by ``ui/console.py`` *after* it has chosen Rich (never at its module level).
+* AST rule: no module under ``inodefence/ui`` imports an optional package (rich, textual,
+  fastapi, starlette, uvicorn) at module level, except the modules in ``EXEMPT``, each for its
+  own library only; those modules are themselves imported only lazily (e.g. ``ui/console.py``
+  imports the Rich builders after it has chosen Rich, never at its module level).
 * Behaviour with Rich blocked (``sys.modules['rich'] = None``, and the Rich-only modules dropped
   from the import cache so a stray import really fails): each command below exits as usual and
   prints its plain screen, even when stdout claims to be an interactive terminal.
@@ -30,12 +31,19 @@ from inodefence.ui import console
 
 UI = Path(__file__).resolve().parents[1] / "src" / "inodefence" / "ui"
 OPTIONAL = ("rich", "textual", "fastapi", "starlette", "uvicorn")
-#: Modules that import an optional package at module level, each loaded only lazily:
+#: The modules allowed to import an optional package at module level, and *which* packages
+#: (an exemption covers only its own library). Each is itself imported only lazily:
 #: components/results build Rich renderables (``ui/console.py`` imports them inside a method,
 #: once Rich is in use); tui/app defines Textual classes (only ``ui.tui.run`` imports it);
 #: web/_app defines the FastAPI app on Starlette (only ``ui.web.create_app``/``run`` import it,
 #: pinned by tests/test_web_import.py).
-RICH_ONLY = {"components.py", "results.py", "tui/app.py", "web/_app.py"}
+EXEMPT: dict[str, frozenset[str]] = {
+    "components.py": frozenset({"rich"}),
+    "results.py": frozenset({"rich"}),
+    "tui/app.py": frozenset({"rich", "textual"}),
+    "web/_app.py": frozenset({"fastapi", "starlette"}),
+}
+LAZY_ONLY = set(EXEMPT)
 FIXTURE = Path(__file__).parent / "fixtures" / "result-contract-v1" / "fixture-regression.json"
 
 
@@ -62,12 +70,15 @@ def test_no_ui_module_imports_an_optional_package_at_module_level() -> None:
     offenders = {}
     for path in sorted(UI.rglob("*.py")):
         rel = path.relative_to(UI).as_posix()
-        if rel in RICH_ONLY:
-            continue
-        found = _module_level_imports(path) & set(OPTIONAL)
+        found = (_module_level_imports(path) & set(OPTIONAL)) - EXEMPT.get(rel, frozenset())
         if found:
             offenders[rel] = sorted(found)
-    assert offenders == {}, "import these lazily, or add the module to RICH_ONLY with a reason"
+    assert offenders == {}, "import these lazily, or add an exemption to EXEMPT with a reason"
+
+
+def test_an_exemption_covers_only_its_own_library() -> None:
+    assert "rich" not in EXEMPT["web/_app.py"] and "textual" not in EXEMPT["web/_app.py"]
+    assert "fastapi" not in EXEMPT["tui/app.py"] and "textual" not in EXEMPT["results.py"]
 
 
 def test_rich_only_modules_are_imported_only_lazily() -> None:
@@ -78,8 +89,8 @@ def test_rich_only_modules_are_imported_only_lazily() -> None:
             for name in _module_level_imports(path)
             if name.startswith("inodefence.ui.")
         }
-        if rel not in RICH_ONLY:
-            assert not reached & RICH_ONLY, f"{rel} imports a Rich-only module at module level"
+        if rel not in LAZY_ONLY:
+            assert not reached & LAZY_ONLY, f"{rel} imports a lazy-only module at module level"
     cli_imports = _module_level_imports(UI.parent / "cli.py")
     assert not {n for n in cli_imports if n.startswith("inodefence.ui.")} - {"inodefence.ui"}
 

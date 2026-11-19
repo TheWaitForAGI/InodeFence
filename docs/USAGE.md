@@ -293,6 +293,10 @@ TAR의 내용은 보내지 않습니다(경로와 기록된 SHA-256만). 값은 
 `scanned:` 줄에 나옵니다.
 API의 JSON 형식(`/api/…`)은 이 대시보드용이며 호환 약속이 아닙니다.
 
+wheel로만 설치하면(클론 없음, `INODEFENCE_HOME` 없음) 대시보드는 열리지만 Targets 페이지는 대상 목록 대신
+"target registry not readable · no repository root configured"를 보여 줍니다. 대상 목록은 클론에서 읽기 때문이며,
+위 [설치](#설치) 표의 다른 명령과 같은 규칙입니다. 클론에서 설치하거나 `INODEFENCE_HOME=<클론>`을 주세요.
+
 종료 코드: Ctrl-C로 멈추면 0. FastAPI·uvicorn이 없거나(설치 안내 한 줄) 서버를 시작하지 못하면(포트 사용 중 등, 한 줄)
 3입니다.
 

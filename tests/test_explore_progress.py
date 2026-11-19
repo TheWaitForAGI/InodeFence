@@ -27,7 +27,12 @@ from inodefence.drivers.run_target import (
 )
 from inodefence.drivers.runtime.hooks import Finding, LaunchArtifacts
 from inodefence.drivers.runtime.policy import STRICT
-from inodefence.live_exploration import PROGRESS_FILE, read_progress, render_live_status
+from inodefence.live_exploration import (
+    PROGRESS_FILE,
+    list_violation_cases,
+    read_progress,
+    render_live_status,
+)
 from inodefence.target_result import (
     CampaignInfo,
     CaseVerdict,
@@ -621,3 +626,27 @@ def test_an_interrupt_is_named_as_the_cause_and_the_terminal_is_restored(
     assert "[explore] aborted" in err and "cause: interrupted (Ctrl-C)" in err
     subprocess.run(["sh", "-c", "echo BACK"], check=True)  # descriptors 1 and 2 are restored
     assert capfd.readouterr().out == "BACK\n"
+
+
+def test_the_replay_example_comes_from_this_runs_live_violation_records(tmp_path: Path) -> None:
+    rec, _, live = _recorder(tmp_path, every_runs=1)
+    rec.on_step(_step(0))
+    rec.on_step(_step(1, c1=True))  # a violating run: the recorder writes its case folder
+    rec.on_step(_step(2, c2=True))
+    rec.close()
+    session = _session(_launch(LaunchArtifacts(report=tmp_path / "report.json", live=live)))
+    run = _progress(pg.PROGRESS, session, tmp_path)
+    expected = [live / record["dir"] for record in list_violation_cases(live)]
+    assert len(expected) == 2 and run._case_dirs() == expected  # the records, nothing else
+    assert all(path.is_dir() and path.parent.parent == live for path in run._case_dirs())
+    (tmp_path / "other" / "violations" / "run-000099").mkdir(parents=True)  # not this run's
+    assert run._case_dirs() == expected
+
+
+def test_no_violation_record_no_replay_example(tmp_path: Path) -> None:
+    rec, _, live = _recorder(tmp_path, every_runs=1)
+    rec.on_step(_step(0))
+    rec.close()
+    session = _session(_launch(LaunchArtifacts(report=tmp_path / "report.json", live=live)))
+    assert _progress(pg.PROGRESS, session, tmp_path)._case_dirs() == []
+    assert _progress(pg.PROGRESS, _session(), tmp_path)._case_dirs() == []  # no launch yet

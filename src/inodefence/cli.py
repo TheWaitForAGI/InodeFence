@@ -218,6 +218,26 @@ def _verify_screen(out: Path, started: float) -> None:
     console.verify_results([s for s in read_verify(out) if written_now(s)], out)
 
 
+def cmd_tui(args: argparse.Namespace) -> int:
+    """The read-only terminal dashboard (optional ``tui`` extra). 3 when it cannot start."""
+    if args.refresh <= 0:
+        print("error: --refresh must be > 0", file=sys.stderr)
+        return 3
+    if not (sys.stdin.isatty() and sys.stdout.isatty()):
+        print(
+            "error: inodefence tui needs an interactive terminal (stdin and stdout)",
+            file=sys.stderr,
+        )
+        return 3
+    from inodefence.ui.tui import TuiUnavailable, run
+
+    try:
+        return run(extra=args.folders, refresh=args.refresh)
+    except TuiUnavailable as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 3
+
+
 def cmd_compare(args: argparse.Namespace) -> int:
     from inodefence.app.runs import compare_results, read_result
     from inodefence.ui.console import Console
@@ -598,6 +618,19 @@ def build_parser() -> argparse.ArgumentParser:
     compare.add_argument("a", type=Path, help="a result.json (shown as A)")
     compare.add_argument("b", type=Path, help="another result.json (shown as B)")
     compare.set_defaults(func=cmd_compare)
+
+    tui = sub.add_parser(
+        "tui",
+        help="read-only full-screen dashboard of the runs on this host (optional 'tui' extra)",
+        epilog="exit codes: 0 quit, 3 not started (no Textual, not an interactive terminal, "
+        "bad --refresh). Reads the default explore/verify output folders plus FOLDER ...; "
+        "starts, stops, deletes and writes nothing.",
+    )
+    tui.add_argument("folders", nargs="*", type=Path, metavar="FOLDER", help="extra folders")
+    tui.add_argument(
+        "--refresh", type=float, default=1.0, help="seconds between re-reads (default 1)"
+    )
+    tui.set_defaults(func=cmd_tui)
 
     return parser
 

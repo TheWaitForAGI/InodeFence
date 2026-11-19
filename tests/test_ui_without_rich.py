@@ -30,9 +30,10 @@ from inodefence.ui import console
 
 UI = Path(__file__).resolve().parents[1] / "src" / "inodefence" / "ui"
 OPTIONAL = ("rich", "textual", "fastapi", "uvicorn")
-#: Modules that build Rich renderables and so import Rich at module level. Only
-#: ``ui/console.py`` imports them, inside a method, once Rich is in use.
-RICH_ONLY = {"components.py", "results.py"}
+#: Modules that import an optional package at module level, each loaded only lazily:
+#: components/results build Rich renderables (``ui/console.py`` imports them inside a method,
+#: once Rich is in use); tui/app defines Textual classes (only ``ui.tui.run`` imports it).
+RICH_ONLY = {"components.py", "results.py", "tui/app.py"}
 FIXTURE = Path(__file__).parent / "fixtures" / "result-contract-v1" / "fixture-regression.json"
 
 
@@ -71,7 +72,7 @@ def test_rich_only_modules_are_imported_only_lazily() -> None:
     for path in sorted(UI.rglob("*.py")):
         rel = path.relative_to(UI).as_posix()
         reached = {
-            name.rsplit(".", 1)[-1] + ".py"
+            name.removeprefix("inodefence.ui.").replace(".", "/") + ".py"
             for name in _module_level_imports(path)
             if name.startswith("inodefence.ui.")
         }
@@ -166,6 +167,20 @@ def test_status(no_rich, capsys, tmp_path) -> None:
     _cell(tmp_path, "node-tar-7.5.2", data)
     assert cli.main(["status", str(tmp_path)]) == 0
     assert "\x1b" not in capsys.readouterr().out
+
+
+def test_tui_without_textual_is_one_line_and_exit_3(no_rich, monkeypatch, capsys) -> None:
+    monkeypatch.delitem(sys.modules, "inodefence.ui.tui.app", raising=False)
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True, raising=False)
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: True, raising=False)
+    assert cli.main(["tui"]) == 3
+    err = capsys.readouterr().err.strip().splitlines()
+    assert len(err) == 1 and "inodefence[tui]" in err[0]
+
+
+def test_tui_off_a_terminal_starts_nothing(capsys) -> None:
+    assert cli.main(["tui"]) == 3  # pytest's stdin/stdout are not a terminal
+    assert "interactive terminal" in capsys.readouterr().err
 
 
 def test_explore_progress_display(no_rich) -> None:

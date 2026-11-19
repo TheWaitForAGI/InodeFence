@@ -309,6 +309,10 @@ class RunSummary:
     #: campaign keys this reader does not know (a newer version's), as stored
     extras: Mapping[str, Any] = field(default_factory=dict)
     error: str | None = None
+    #: the result file's modification time (epoch seconds; lstat, never following a link). It is
+    #: when the file was last written, not a time the result records -- result.json has none.
+    #: ``None`` when there is no file or it cannot be stat-ed.
+    result_mtime: float | None = None
 
     @property
     def has_values(self) -> bool:
@@ -645,7 +649,20 @@ def _summary_as_stored(
     )
 
 
+def _lstat_mtime(path: Path) -> float | None:
+    try:
+        info = path.lstat()
+    except OSError:
+        return None
+    return None if stat.S_ISLNK(info.st_mode) else info.st_mtime
+
+
 def read_result(path: Path, ref: RunRef | None = None) -> RunSummary:
+    """See :func:`_read_result`; the summary also carries the file's ``result_mtime``."""
+    return replace(_read_result(path, ref), result_mtime=_lstat_mtime(path))
+
+
+def _read_result(path: Path, ref: RunRef | None = None) -> RunSummary:
     """One ``result.json`` (an explore result or a verify cell) as a :class:`RunSummary`.
 
     The strict reader (:func:`inodefence.target_result.from_json_dict`) is tried first, after

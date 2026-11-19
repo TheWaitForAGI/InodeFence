@@ -393,3 +393,16 @@ def test_an_entry_that_cannot_be_stat_ed_is_unreadable_not_ok(tmp_path: Path) ->
         os.chmod(cell / "inputs", 0o755)
     (tar,) = [e for e in entries if e.kind is ArtifactKind.INPUT_TAR]
     assert tar.read_state is ReadState.UNREADABLE and tar.size is None
+
+
+def test_a_summary_carries_the_result_files_mtime(tmp_path: Path) -> None:
+    cell = tmp_path / f"{syn.SYNTHETIC}-verify" / "node-tar-7.5.2"
+    path = syn.write_result(cell, syn.result(mode=syn.ResultMode.FIXTURE_REGRESSION))
+    os.utime(path, (1_800_000_000, 1_800_000_000))
+    (summary,) = runs.read_verify(cell.parent)
+    assert summary.result_mtime == 1_800_000_000
+    assert runs.read_result(tmp_path / "absent" / "result.json").result_mtime is None
+    linked = tmp_path / "linked"
+    linked.mkdir()
+    os.symlink(path, linked / "result.json")
+    assert runs.read_result(linked / "result.json").result_mtime is None  # a link is not followed

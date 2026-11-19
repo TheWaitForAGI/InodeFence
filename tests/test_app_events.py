@@ -36,9 +36,9 @@ def test_follower_emits_changes_in_order(tmp_path: Path) -> None:
     live, recorder = syn.live_run(out, rid, [syn.step(0)], clock=clock)
     follower = RunFollower([RunRef(RunKind.EXPLORE, out, rid)], clock=clock)
     first = follower.poll_once()
-    assert _kinds(first) == ["progress", "state_change"]
-    assert first[0].progress_current == 1 and first[0].progress_total == 20
-    assert first[0].time_source is TimeSource.UPDATED_AT and first[0].run_id_derived
+    assert _kinds(first) == ["state_change", "progress"]  # the run appears, then its numbers
+    assert first[1].progress_current == 1 and first[1].progress_total == 20
+    assert first[1].time_source is TimeSource.UPDATED_AT and first[1].run_id_derived
     assert follower.poll_once() == []  # nothing changed, nothing emitted
     clock.now += 1
     recorder.on_step(syn.step(1, c1=True, fp="c1-x"))
@@ -52,8 +52,8 @@ def test_follower_emits_changes_in_order(tmp_path: Path) -> None:
     syn.write_result(out / "target-explore" / f"{rid}-result",
                      syn.result(cases=[syn.case("step-1", False)]))  # fmt: skip
     third = follower.poll_once()
-    assert _kinds(third) == ["progress", "state_change", "result_ready"]
-    assert third[1].message == "running -> finished" and third[2].verdict == "PASS"
+    assert _kinds(third) == ["state_change", "progress", "result_ready"]
+    assert third[0].message == "running -> finished" and third[2].verdict == "PASS"
     ids = [e.event_id for e in first + second + third]
     assert ids == sorted(ids) and len(set(ids)) == len(ids)
     assert live.is_dir()
@@ -106,7 +106,7 @@ def test_subscribers_share_one_follower_and_drop_oldest(tmp_path: Path) -> None:
     follower.start()
     try:
         first = a.get(timeout=5)
-        assert first is not None and first.kind is EventKind.PROGRESS
+        assert first is not None and first.kind is EventKind.STATE_CHANGE  # the run appears first
         deadline = time.time() + 5
         while b.dropped == 0 and time.time() < deadline:
             time.sleep(0.01)
@@ -122,7 +122,7 @@ def test_diff_is_pure_and_matches_read_run(tmp_path: Path) -> None:
     syn.live_run(out, rid, [syn.step(0)])
     snap = runs.read_run(RunRef(RunKind.EXPLORE, out, rid))
     assert events.diff_snapshots(snap, snap) == []
-    assert _kinds(events.diff_snapshots(None, snap)) == ["progress", "state_change"]
+    assert _kinds(events.diff_snapshots(None, snap)) == ["state_change", "progress"]
 
 
 def test_stop_leaves_no_thread_even_with_open_subscriptions(tmp_path: Path) -> None:

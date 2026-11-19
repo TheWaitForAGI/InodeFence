@@ -145,19 +145,7 @@ def diff_snapshots(previous: RunSnapshot | None, current: RunSnapshot) -> list[U
             (old_progress.updated_at, old_progress.runs, old_progress.state)
             != (new_progress.updated_at, new_progress.runs, new_progress.state)
         )
-        if changed:
-            events.append(
-                _event(
-                    ref,
-                    EventKind.PROGRESS,
-                    new_progress.updated_at,
-                    TimeSource.UPDATED_AT,
-                    now,
-                    status=new_progress.state,
-                    progress_current=new_progress.runs,
-                    progress_total=new_progress.budget,
-                )  # fmt: skip
-            )
+        # the run's state first (it appeared / changed), then its numbers
         old_state = old_progress.state if old_progress else None
         if new_progress.state != old_state and new_progress.state is not None:
             events.append(
@@ -169,6 +157,19 @@ def diff_snapshots(previous: RunSnapshot | None, current: RunSnapshot) -> list[U
                     now,
                     status=new_progress.state,
                     message=f"{old_state or 'unknown'} -> {new_progress.state}",
+                )  # fmt: skip
+            )
+        if changed:
+            events.append(
+                _event(
+                    ref,
+                    EventKind.PROGRESS,
+                    new_progress.updated_at,
+                    TimeSource.UPDATED_AT,
+                    now,
+                    status=new_progress.state,
+                    progress_current=new_progress.runs,
+                    progress_total=new_progress.budget,
                 )  # fmt: skip
             )
     elif previous is None and current.summary is None and not current.replays:

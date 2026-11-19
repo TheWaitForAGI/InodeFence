@@ -83,14 +83,20 @@ svg.icon { width: 16px; height: 16px; display: inline-block; vertical-align: -3p
 
 /* area graph */
 .area-wrap { display: flex; flex-direction: column; gap: 6px; }
-.area svg { width: 100%; height: 150px; display: block; }
-.area .legend { font-size: 11px; color: var(--if-muted); }
+.area svg { width: 100%; height: 180px; display: block; }
+.area-head { display: flex; justify-content: space-between; align-items: baseline; font-size: 12px; }
+.area-foot { display: flex; justify-content: space-between; font-size: 11px; color: var(--if-muted); }
+.selector { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+.selbtn { background: var(--if-surface); border: 1px solid var(--faint); color: var(--if-muted); border-radius: 999px; padding: 2px 9px; font-size: 11px; cursor: pointer; }
+.selbtn:hover { color: var(--if-text); }
+.selbtn.on { color: var(--if-accent); border-color: var(--if-accent); }
 
 /* rank list */
 .rank-list { display: flex; flex-direction: column; gap: 2px; }
 .rank-item { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; font-size: 13px; padding: 7px 0; border-bottom: 1px solid var(--faint-2); }
 .rank-item:last-child { border-bottom: none; }
-.rank-item .meta { color: var(--if-muted); font-size: 12px; }
+.rank-item .meta { color: var(--if-muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row-flex.wrap { flex-wrap: wrap; justify-content: flex-end; }
 
 /* table */
 .table-wrap { overflow-x: auto; }

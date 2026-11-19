@@ -198,8 +198,22 @@ def _run_status(snapshot: runs_app.RunSnapshot) -> dict[str, Any]:
     """
     progress = snapshot.progress
     summary = snapshot.summary
+    # "stalled" is a live run that has gone quiet: the threshold is 4 x the live-pull interval,
+    # read from the app layer (never re-stated in the web). None when the question does not apply
+    # (not a live run, or the snapshot carries no age). RES1 will lift this to a shared app.runs
+    # function; swap to it when it lands.
+    stalled: bool | None = None
+    if (
+        progress is not None
+        and progress.source is runs_app.Source.LIVE
+        and progress.state == "running"
+    ):
+        age = snapshot.progress_age()
+        if age is not None:
+            stalled = age > 4 * runs_app.LIVE_PULL_INTERVAL_SECONDS
     return {
         "state": progress.state if progress else None,
+        "stalled": stalled,
         "source": progress.source.value if progress else None,
         "runs": progress.runs if progress else None,
         "budget": progress.budget if progress else None,

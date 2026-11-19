@@ -158,3 +158,26 @@ def test_events_stream_is_event_stream(run_out):
         with client.stream("GET", "/api/events") as res:
             assert res.status_code == 200
             assert res.headers["content-type"].startswith("text/event-stream")
+
+
+def test_live_run_gone_quiet_is_stalled(tmp_path):
+    # an open live folder whose updated_at is far in the past: running but stalled, not active
+    out = syn.explore_out(tmp_path)
+    rid = syn.run_id(2)
+    syn.live_run(out, rid, [syn.step(1), syn.step(2)], clock=syn.Clock(start=1000.0), close=None)
+    client = TestClient(web.create_app(roots=[out]))
+    run = next(r for r in client.get("/api/runs").json()["runs"] if r["kind"] == "explore")
+    assert run["status"]["state"] == "running"
+    assert run["status"]["source"] == "live"
+    assert run["status"]["stalled"] is True
+
+
+def test_fresh_live_run_is_not_stalled(tmp_path):
+    # the synthetic clock default is far in the future, so progress_age clamps to 0 (fresh)
+    out = syn.explore_out(tmp_path)
+    rid = syn.run_id(3)
+    syn.live_run(out, rid, [syn.step(1)], close=None)
+    client = TestClient(web.create_app(roots=[out]))
+    run = next(r for r in client.get("/api/runs").json()["runs"] if r["kind"] == "explore")
+    assert run["status"]["state"] == "running"
+    assert run["status"]["stalled"] is False

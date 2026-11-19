@@ -26,6 +26,8 @@ function targetColor(name) {
   let h = 0; for (const c of String(name || "")) h = (h * 31 + c.charCodeAt(0)) >>> 0;
   return `--if-series-${(h % 6) + 1}`;
 }
+// Termination is a separate axis from the verdict: success is neutral, the rest carry a tone.
+const TERM_COLOR = { success: "--if-muted", rejected: "--if-warn", failed: "--if-bad", timed_out: "--if-bad", build_invalid: "--if-warn", unknown: "--if-muted" };
 const REPLAY_LABEL = {
   reproduced_violation: "reproduced", partially_reproduced: "partially", not_reproduced: "not reproduced",
   no_violation: "no violation", new_violation: "new violation", unjudged: "unjudged",
@@ -113,31 +115,59 @@ function barChart(rows) {
   return box;
 }
 
-/* area graph of observed runs over time for one active run */
+/* area graph of observed runs over time for one active run (axes as HTML so text never distorts) */
 function areaGraph(points, budget, since) {
   if (!points || points.length < 2) return null;
-  const W = 600, H = 150, pad = 4;
+  const W = 600, H = 170, pad = 6;
   const t0 = points[0].t, t1 = points[points.length - 1].t;
   const span = Math.max(1e-6, t1 - t0);
   const ymax = Math.max(budget || 0, ...points.map((p) => p.runs || 0), 1);
   const x = (p) => pad + ((p.t - t0) / span) * (W - 2 * pad);
-  const y = (p) => H - pad - ((p.runs || 0) / ymax) * (H - 2 * pad);
-  const line = points.map((p, i) => `${i ? "L" : "M"}${x(p).toFixed(1)} ${y(p).toFixed(1)}`).join(" ");
-  const area = `${line} L${x(points[points.length - 1]).toFixed(1)} ${H - pad} L${x(points[0]).toFixed(1)} ${H - pad} Z`;
+  const y = (v) => H - pad - ((v || 0) / ymax) * (H - 2 * pad);
+  const line = points.map((p, i) => `${i ? "L" : "M"}${x(p).toFixed(1)} ${y(p.runs).toFixed(1)}`).join(" ");
+  const last = points[points.length - 1];
+  const area = `${line} L${x(last).toFixed(1)} ${H - pad} L${x(points[0]).toFixed(1)} ${H - pad} Z`;
+  const budgetLine = budget
+    ? `<line x1="${pad}" y1="${y(budget).toFixed(1)}" x2="${W - pad}" y2="${y(budget).toFixed(1)}" stroke="var(--if-muted)" stroke-width="1" stroke-dasharray="4 4" opacity="0.6"/>`
+    : "";
   const svg = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+    ${budgetLine}
     <path d="${area}" fill="var(--if-accent)" fill-opacity="0.14" stroke="none"/>
-    <path d="${line}" fill="none" stroke="var(--if-accent)" stroke-width="2"/></svg>`;
-  const wrap = el("div", { class: "area-wrap" }, []);
+    <path d="${line}" fill="none" stroke="var(--if-accent)" stroke-width="2"/>
+    <circle cx="${x(last).toFixed(1)}" cy="${y(last.runs).toFixed(1)}" r="3" fill="var(--if-accent)"/></svg>`;
+  const nowStr = new Date(t1 * 1000).toLocaleTimeString();
+  const wrap = el("div", { class: "area-wrap" }, [
+    el("div", { class: "area-head" }, [
+      el("span", { class: "muted" }, ["runs / budget"]),
+      el("span", { class: "num", style: "color:var(--if-accent);font-weight:600" }, [`${num(last.runs)} / ${budget == null ? EM_DASH : num(budget)}`]),
+    ]),
+  ]);
   const holder = el("div", { class: "area" }, []); holder.innerHTML = svg;
   wrap.appendChild(holder);
-  wrap.appendChild(el("div", { class: "legend" }, [`runs/budget observed since ${since} · ${num(points[points.length - 1].runs)}/${num(budget)}`]));
+  wrap.appendChild(el("div", { class: "area-foot" }, [
+    el("span", {}, [`since ${since}`]),
+    el("span", {}, [budget == null ? "" : `budget ${num(budget)}`]),
+    el("span", {}, [`now ${nowStr}`]),
+  ]));
   return wrap;
 }
 
-const state = { runs: null, findings: null, replays: null, filter: "", series: {}, targetsCount: null, version: null, roots: [] };
+const state = { runs: null, findings: null, replays: null, filter: "", series: {}, targetsCount: null, version: null, roots: [], selectedProgressKey: null };
 
 function runKey(r) { return `${r.kind}:${r.root}:${r.run_id || ""}`; }
-function fmtAge(s) { return s == null ? EM_DASH : `${Math.round(s)}s ago`; }
+function fmtAge(s) { return s == null ? EM_DASH : (s < 90 ? `${Math.round(s)}s ago` : s < 5400 ? `${Math.round(s / 60)}m ago` : `${(s / 3600).toFixed(1)}h ago`); }
+function toneChip(label, t, title) { return el("span", { class: `chip chip-${t} chip-sm`, title: title || "" }, [`${SYMBOL[t]} ${String(label).toUpperCase()}`]); }
+
+// The stall decision (and its threshold) is the server's: `stalled` is true/false/null in status.
+function runState(s) {
+  if (s && s.source === "live" && s.state === "running") {
+    if (s.stalled === true) return { label: "stalled", tone: "warn", active: false, age: s.progress_age_seconds };
+    if (s.stalled === false) return { label: "running", tone: "info", active: true };
+    return { label: "running (age ?)", tone: "warn", active: false }; // stalled null = age unknown
+  }
+  if (s && s.state) return { label: s.state, tone: tone(s.state), active: false };
+  return null;
+}
 
 /* -- Overview -- */
 function renderOverview(view) {
@@ -148,7 +178,8 @@ function renderOverview(view) {
   const notRead = scanned.filter((r) => ["not_ready", "unreadable"].includes(r.status.read_state));
   const readable = scanned.filter((r) => !notRead.includes(r));
   const campaignsTotal = campaigns.length;
-  const active = scanned.filter((r) => r.status.state === "running").length;
+  const active = scanned.filter((r) => runState(r.status)?.active).length;
+  const stalledN = scanned.filter((r) => r.status.stalled === true).length;
   const finished = scanned.filter((r) => r.status.verdict != null).length;
   const candSum = readable.reduce((a, r) => a + (r.status.candidates || 0), 0);
   const needsRepro = readable.reduce((a, r) => a + (r.status.candidates_needs_repro || 0), 0);
@@ -170,7 +201,9 @@ function renderOverview(view) {
     stat("targets", state.targetsCount == null ? EM_DASH : String(state.targetsCount),
       [el("span", { class: "chip chip-sm chip-muted" }, ["registered drivers"])], "--if-accent", "targets"),
     stat("runs", String(campaignsTotal),
-      [el("span", { class: "chip chip-sm chip-info" }, [`${active} active`]), el("span", { class: "chip chip-sm chip-muted" }, [`${finished} finished`])],
+      [el("span", { class: "chip chip-sm chip-info" }, [`${active} active`]),
+       stalledN ? el("span", { class: "chip chip-sm chip-warn" }, [`${stalledN} stalled`]) : null,
+       el("span", { class: "chip chip-sm chip-muted" }, [`${finished} finished`])].filter(Boolean),
       "--if-info", "runs"),
     stat("violation candidates", readable.length === 0 ? EM_DASH : String(candSum),
       [el("span", { class: "chip chip-sm chip-warn" }, [`${needsRepro} need repro check`]), notRead.length ? el("span", { class: "chip chip-sm chip-muted" }, [`${notRead.length} not read`]) : null].filter(Boolean),
@@ -182,20 +215,29 @@ function renderOverview(view) {
   view.appendChild(statRow);
 
   // campaign progress (wide) + first chart row
-  const activeRuns = scanned.filter((r) => r.status.state === "running");
+  const activeRuns = scanned.filter((r) => runState(r.status)?.active);
   let progressBody = null, progressNote = null;
-  const withSeries = activeRuns.map((r) => ({ r, pts: state.series[`${r.kind}:${r.root}:${r.run_id || ""}`] || [] })).filter((x) => x.pts.length >= 2).sort((a, b) => b.pts.length - a.pts.length);
+  const withSeries = activeRuns.map((r) => ({ r, key: runKey(r), pts: state.series[runKey(r)] || [] })).filter((x) => x.pts.length >= 2);
   if (withSeries.length) {
-    const top = withSeries[0];
-    const since = new Date(top.pts[0].t * 1000).toLocaleTimeString();
-    progressBody = areaGraph(top.pts, top.pts[top.pts.length - 1].budget, since);
-    progressNote = `${top.r.target || EM_DASH} ${top.r.run_id || ""}`;
+    const chosen = withSeries.find((x) => x.key === state.selectedProgressKey)
+      || withSeries.slice().sort((a, b) => b.pts.length - a.pts.length)[0];
+    const since = new Date(chosen.pts[0].t * 1000).toLocaleTimeString();
+    const graph = areaGraph(chosen.pts, chosen.pts[chosen.pts.length - 1].budget, since);
+    progressNote = `${chosen.r.target || EM_DASH} ${(chosen.r.run_id || "").slice(-16)}`;
+    if (withSeries.length > 1) {
+      const sel = el("div", { class: "selector" }, withSeries.map((x) => {
+        const btn = el("button", { class: "selbtn" + (x.key === chosen.key ? " on" : "") }, [`${x.r.target || "?"} ${(x.r.run_id || "").slice(-8)}`]);
+        btn.addEventListener("click", () => { state.selectedProgressKey = x.key; const v = $("#view"); v.innerHTML = ""; renderOverview(v); });
+        return btn;
+      }));
+      progressBody = el("div", {}, [sel, graph]);
+    } else progressBody = graph;
   } else if (activeRuns.length) {
     progressBody = empty("no observed values yet", ["values appear while an active run reports (node-tar writes live numbers; the others do not)"]);
   } else {
     const rows = readable.filter((r) => r.status.runs != null && r.status.budget).slice(0, 8)
       .map((r) => ({ name: `${r.target || EM_DASH} ${(r.run_id || "").slice(-8)}`, value: r.status.runs, color: targetColor(r.target), title: `${num(r.status.runs)}/${num(r.status.budget)}` }));
-    progressBody = rows.length ? barChart(rows) : empty("no active run", ["open this page while `inodefence explore` runs to watch runs/budget climb"]);
+    progressBody = rows.length ? barChart(rows) : empty("no active run", [["open this page while ", el("code", {}, ["inodefence explore --target node-tar --version latest"]), " runs to watch runs/budget climb"]]);
   }
   const progressCard = cardLabeled(progressNote ? `campaign progress · ${progressNote}` : "campaign progress", progressBody, true);
 
@@ -207,11 +249,19 @@ function renderOverview(view) {
 
   const verdicts = { PASS: 0, FAIL: 0, ERROR: 0 };
   for (const r of scanned) { const v = r.status.verdict; if (v && verdicts[v] != null) verdicts[v] += 1; }
-  const verdictRows = [{ name: "PASS", value: verdicts.PASS, color: "--if-ok" }, { name: "FAIL", value: verdicts.FAIL, color: "--if-bad" }, { name: "ERROR", value: verdicts.ERROR, color: "--if-warn" }];
+  const asStored = scanned.filter((r) => r.status.read_state === "unvalidated").length;
+  const noResult = scanned.filter((r) => r.status.verdict == null && !["ok", "unvalidated"].includes(r.status.read_state)).length;
+  const verdictRows = [
+    { name: "PASS", value: verdicts.PASS, color: "--if-ok" },
+    { name: "FAIL", value: verdicts.FAIL, color: "--if-bad" },
+    { name: "ERROR", value: verdicts.ERROR, color: "--if-warn" },
+    { name: "as stored", value: asStored, color: "--if-warn", title: "results the strict reader refused (shown as stored)" },
+    { name: "no result yet", value: noResult, color: "--if-muted" },
+  ];
 
   const terms = {};
   for (const r of scanned) for (const [k, n] of Object.entries(r.status.terminations || {})) { if (n == null) continue; terms[k] = (terms[k] || 0) + n; }
-  const termRows = Object.entries(terms).map(([name, value], i) => ({ name, value, color: `--if-series-${(i % 6) + 1}` }));
+  const termRows = Object.entries(terms).map(([name, value]) => ({ name, value, color: TERM_COLOR[name] || "--if-muted" }));
 
   const concl = {};
   for (const r of replays) { const c = r.replay.conclusion || "none"; concl[c] = (concl[c] || 0) + 1; }
@@ -248,7 +298,7 @@ function renderRecentCandidates(findingsData) {
     if (f.validated === false) marks.push(chip("as stored", "chip-warn chip-sm", "result not validated by the strict reader"));
     list.appendChild(el("div", { class: "rank-item" }, [
       el("div", { style: "min-width:0" }, [el("div", { class: "mono", style: "overflow:hidden;text-overflow:ellipsis" }, [dash(c.case_id)]), el("div", { class: "meta" }, [`${f.target || EM_DASH}${f.version ? "@" + f.version : ""}`])]),
-      el("div", { class: "row-flex" }, marks),
+      el("div", { class: "row-flex wrap" }, marks),
     ]));
   }
   if (findingsData.truncated) list.appendChild(el("div", { class: "note", style: "margin:8px 0 0" }, [`from the most recent ${findingsData.runs_scanned} of ${findingsData.runs_total} runs`]));
@@ -273,13 +323,19 @@ function renderRunsTable(campaigns) {
     let progCell;
     if (pct == null) progCell = el("span", { class: "dash" }, [EM_DASH]);
     else { const fill = el("div", { class: "prog-fill" }, []); fill.style.width = `${pct}%`; progCell = el("div", { class: "row-flex", style: "justify-content:flex-end" }, [el("span", { class: "muted num", style: "margin-right:6px" }, [`${num(runsN)}/${num(budget)}`]), el("div", { class: "prog" }, [fill])]); }
-    const stateCell = s && s.state ? chip(s.state) : (s && !s.verdict && r.target && r.target !== "node-tar" ? el("span", { class: "chip chip-sm chip-muted" }, ["no live data"]) : el("span", { class: "dash" }, [EM_DASH]));
+    const rs = runState(s);
+    const stateCell = rs
+      ? toneChip(rs.label, rs.tone, rs.age != null ? fmtAge(rs.age) : "")
+      : (s && !s.verdict && r.target && r.target !== "node-tar"
+          ? el("span", { class: "chip chip-sm chip-muted" }, ["no live data"])
+          : el("span", { class: "dash" }, [EM_DASH]));
     const verdictCell = el("div", { class: "row-flex" }, [
       s && s.verdict ? chip(s.verdict) : el("span", { class: "dash" }, [EM_DASH]),
       s && s.read_state === "unvalidated" ? chip("as stored", "chip-warn chip-sm", "result not validated by the strict reader") : null,
     ]);
     const cand = s ? ((s.candidates || 0) + (s.candidates_needs_repro || 0)) : null;
-    const idTail = (r.run_id || r.id || "").slice(-12);
+    const fullId = r.run_id || r.id || "";
+    const idTail = fullId.length > 12 ? "…" + fullId.slice(-12) : fullId || EM_DASH;
     body.appendChild(el("tr", {}, [
       el("td", {}, [kindChip(r.kind)]),
       el("td", { class: "mono", title: r.run_id || r.id }, [dash(idTail)]),
@@ -305,13 +361,27 @@ async function renderRunDetail(view, id) {
   catch (err) { view.appendChild(el("div", { class: "card" }, [empty("run not found", [String(err)])])); return; }
   const snap = data.snapshot;
   const s = snap.summary || {};
+  const p = snap.progress || {};
+  const terms = Object.entries(s.terminations || {}).filter(([, n]) => n != null).map(([k, n]) => `${k} ${n}`).join(", ") || null;
+  const findings = (snap.findings || []).filter((f) => f.finding);
   const rows = [
     ["kind", snap.ref.kind], ["target", snap.ref.target], ["version", snap.ref.version],
-    ["verdict", s.verdict], ["validated", s.validated === false ? "as stored (not validated)" : String(s.validated)],
-    ["executed", s.executed], ["unjudged steps", s.unjudged_steps], ["result", s.result_path],
+    ["state", p.state], ["runs / budget", (p.runs == null && p.budget == null) ? null : `${p.runs == null ? EM_DASH : p.runs} / ${p.budget == null ? EM_DASH : p.budget}`],
+    ["verdict", s.verdict],
+    ["validated", s.validated == null ? null : (s.validated === false ? "as stored (not validated)" : "validated")],
+    ["executed", s.executed], ["unjudged steps", s.unjudged_steps],
+    ["terminations", terms], ["candidates", (snap.findings || []).length ? findings.length : null],
+    ["result", s.result_path],
   ];
   const dl = el("div", { class: "rank-list" }, rows.map(([k, v]) => el("div", { class: "rank-item" }, [el("div", { class: "meta" }, [k]), el("div", { class: "mono" }, [v == null ? EM_DASH : String(v)])])));
   view.appendChild(cardLabeled("summary", dl));
+  if (findings.length) {
+    const list = el("div", { class: "rank-list" }, findings.map((f) => el("div", { class: "rank-item" }, [
+      el("div", { class: "mono", style: "overflow:hidden;text-overflow:ellipsis" }, [dash(f.case_id)]),
+      el("div", { class: "row-flex" }, [...["c0", "c1", "c2"].map((k) => f[k] === true ? el("span", { class: "chip chip-bad chip-sm" }, [k.toUpperCase()]) : null).filter(Boolean), chip(f.finding, null, f.finding)]),
+    ])));
+    view.appendChild(cardLabeled("candidates", list));
+  }
   view.appendChild(el("div", { class: "note" }, [el("a", { class: "go", href: "#/overview" }, ["‹ back to overview"])]));
 }
 
@@ -363,7 +433,8 @@ async function pollHealth() {
   const chipEl = $("#chip-engine");
   try {
     const h = await api("/api/health");
-    if (h.package_version && !state.version) { state.version = h.package_version; const v = $("#nav-ver"); if (v) v.textContent = h.package_version; }
+    const ver = document.querySelector(".nav-foot .ver");
+    if (ver) ver.textContent = h.package_version ? `engine v${h.package_version}` : "engine (version unknown)";
     if (h.state === "checking") { chipEl.className = "chip chip-muted"; chipEl.textContent = `${SYMBOL.muted} engine checking…`; return; }
     const t = h.failed ? "bad" : (h.unknown ? "warn" : "ok");
     const word = h.failed ? "FAIL" : (h.unknown ? `WARN · ${h.unknown} unknown` : "OK");

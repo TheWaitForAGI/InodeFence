@@ -30,8 +30,9 @@ inodefence targets          # 추출기와 각 추출기가 지원하는 것(옵
 | `web` | `pip install -e '.[web]'` | fastapi>=0.165, uvicorn>=0.54 | 로컬 웹 대시보드 `inodefence dashboard`(FastAPI·uvicorn). 아래 [웹 대시보드](#웹-대시보드dashboard) |
 | `all` | `pip install -e '.[all]'` | 위 넷 | 위의 것 전부 |
 
-하한은 실제로 시험한 버전입니다(2026-11-19: rich 15.0.0, textual 8.2.8, fastapi 0.165.0, uvicorn 0.54.0, 테스트용
-httpx 0.28.1). 그보다 낮은 버전에서 동작하는지는 확인하지 않았으므로 하한으로 선언하지 않습니다.
+하한은 시험한 버전의 minor입니다. 시험한 정확한 버전은 rich 15.0.0, textual 8.2.8, fastapi 0.165.0, uvicorn 0.54.0,
+테스트용 httpx 0.28.1입니다(2026-11-19). 같은 minor의 더 이른 패치(예: textual 8.2.0–8.2.7)와 그보다 낮은 버전은
+시험하지 않았습니다.
 
 Rich는 stdout이 터미널이고 `NO_COLOR`가 없으며 `TERM`이 `dumb`가 아닐 때만 씁니다. 파이프·파일·`NO_COLOR`에서는
 Rich가 설치돼 있어도 표준 라이브러리 화면과 같은 글자가 나가고 색 코드는 없습니다. `targets --json`, `result.json`,

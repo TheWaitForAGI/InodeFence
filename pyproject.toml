@@ -23,8 +23,9 @@ inodefence = "inodefence.cli:main"
 # The command itself needs none of these (dependencies = []). Each interface extra is optional:
 # `ui` draws the terminal with Rich (without it the plain screens are used); `tui` is for
 # `inodefence tui` (Textual); `web` is for `inodefence dashboard` (FastAPI + uvicorn).
-# Lower bounds are the versions actually tested (2026-11-19, CI and the review hosts): rich 15.0,
-# textual 8.2, fastapi 0.165, uvicorn 0.54, httpx 0.28. No untested lower bound is declared.
+# Each lower bound is the minor of the version actually tested (2026-11-19, the HOST4 review
+# venv): exactly rich 15.0.0, textual 8.2.8, fastapi 0.165.0, uvicorn 0.54.0, httpx 0.28.1.
+# Earlier patch releases of those minors (e.g. textual 8.2.0-8.2.7) were not tested.
 ui = ["rich>=15.0"]
 tui = ["textual>=8.2", "rich>=15.0"]
 web = ["fastapi>=0.165", "uvicorn>=0.54"]

@@ -36,7 +36,7 @@ from inodefence.target_result_summary import render_summary
 
 SCOPE = NODE_TAR_ACCEPTED_FAST_SCOPE
 #: A filled stand-in for the tests that write a record; the real values come with the result.
-FILLED = {**SCOPE, "counted_seeds": 3, "rule_sha": "0" * 64}
+FILLED = {**SCOPE, "counted_seeds": [1, 2, 3], "rule_sha": "0" * 64}
 
 
 @pytest.fixture(autouse=True)
@@ -54,8 +54,12 @@ def filled(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
 
 def test_the_scope_is_filled() -> None:
     # Fails on purpose until the follow-up measurement's values are written into the constant.
-    assert type(SCOPE["counted_seeds"]) is int and SCOPE["counted_seeds"] >= 1
+    seeds = SCOPE["counted_seeds"]
+    assert isinstance(seeds, list) and len(seeds) >= 3 and len(set(seeds)) == len(seeds)
+    assert seeds == [58005, 58006, 58009, 58010, 58014]  # the follow-up's counted seeds
+    assert SCOPE["rule"] == "W4 v3"
     assert isinstance(SCOPE["rule_sha"], str) and SCOPE["rule_sha"].startswith("37651dbe")
+    assert len(SCOPE["rule_sha"]) == 64
 
 
 def test_the_measured_scope() -> None:
@@ -142,6 +146,12 @@ def _with(checks: dict[str, Any]) -> dict[str, Any]:
           "acceptance_scope": {**FILLED, "counted_seeds": None}}, "counted_seeds"),
         ({**RECORD, "fast_acceptance": "passed",
           "acceptance_scope": {**FILLED, "rule_sha": None}}, "rule_sha"),
+        ({**RECORD, "fast_acceptance": "passed",
+          "acceptance_scope": {**FILLED, "counted_seeds": [1, 2]}}, "counted_seeds"),
+        ({**RECORD, "fast_acceptance": "passed",
+          "acceptance_scope": {**FILLED, "counted_seeds": [1, 1, 2]}}, "counted_seeds"),
+        ({**RECORD, "fast_acceptance": "passed",
+          "acceptance_scope": {**FILLED, "counted_seeds": 5}}, "counted_seeds"),
         ({**RECORD, "fast_acceptance": "passed", "acceptance_scope": {"version": "7.5.2"}},
          "acceptance_scope"),
     ],

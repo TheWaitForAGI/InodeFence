@@ -217,7 +217,7 @@ def test_the_reader_checks_the_record(record: Any) -> None:
 
 def test_the_node_tar_hook_records_it_under_a_fast_session(monkeypatch, tmp_path: Path) -> None:
     # a filled stand-in scope: the real one is empty until the follow-up result (W4 Q2 (ii))
-    filled = {**NODE_TAR_ACCEPTED_FAST_SCOPE, "counted_seeds": 3, "rule_sha": "0" * 64}
+    filled = {**NODE_TAR_ACCEPTED_FAST_SCOPE, "counted_seeds": [1, 2, 3], "rule_sha": "0" * 64}
     monkeypatch.setitem(er.ACCEPTED_FAST_SCOPE, "node-tar", filled)
 
     def fake(prepared: Any, *, out: Path, run_id: str, **_: Any) -> Path:

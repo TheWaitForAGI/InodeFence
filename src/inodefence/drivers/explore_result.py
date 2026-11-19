@@ -360,7 +360,7 @@ def with_fast_acceptance_scope(
     checks = result.campaign.identity_checks
     if checks is None:
         raise IdentityRecordError("a FAST run with an interval has no probe record to label")
-    if scope["counted_seeds"] is None or scope["rule_sha"] is None:
+    if not scope.get("counted_seeds") or scope.get("rule_sha") is None:
         raise IdentityRecordError(
             "the FAST acceptance scope is not filled yet (counted_seeds, "
             "rule_sha); no result written"

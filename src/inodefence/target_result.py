@@ -538,14 +538,18 @@ INTERVAL_ACCEPTANCE_STATES = (
 #: the follow-up result and are filled here, in this one place; a test fails while they are
 #: empty, so this branch cannot ship unfilled. Follow-up measurement (2026-11-19, HOST1): 5
 #: counted seeds (58005, 58006, 58009, 58010, 58014), every compare exit 0, 0/2000 steps diverged.
+#: ``rule_sha`` is the SHA-256 of W4 rule v3's start-frozen file (checked by IF-H4-ORCH).
 NODE_TAR_ACCEPTED_FAST_SCOPE: dict[str, Any] = {
     "version": "7.5.2",
     "policy": "default",
     "budget": 2000,
-    "counted_seeds": 5,
-    "rule_sha": None,
+    "counted_seeds": [58005, 58006, 58009, 58010, 58014],
+    "rule": "W4 v3",
+    "rule_sha": "37651dbeb2aa6e353732fdb6640b7e7f375aa50c91053d0598ab2f6af18417a0",
 }
-SCOPE_KEYS = ("version", "policy", "budget", "counted_seeds", "rule_sha")
+SCOPE_KEYS = ("version", "policy", "budget", "counted_seeds", "rule", "rule_sha")
+#: The fewest counted seeds a scope may name (W4 rule v3: N_min).
+SCOPE_MIN_COUNTED_SEEDS = 3
 
 
 def in_accepted_scope(scope: dict[str, Any], version: str, policy: str, budget: int) -> bool:
@@ -632,10 +636,25 @@ def _check_acceptance_scope(checks: dict[str, Any]) -> None:
     if type(scope["budget"]) is not int or scope["budget"] < 1:
         raise TargetResultError("acceptance_scope budget must be a positive integer")
     seeds, rule = scope["counted_seeds"], scope["rule_sha"]
-    # An unfilled scope (None) is refused: a record made from it must not exist.
-    if type(seeds) is not int or seeds < 1:
-        raise TargetResultError("acceptance_scope counted_seeds must be a positive integer")
-    if not isinstance(rule, str) or len(rule) != 64:
+    # An unfilled scope (None) is refused: a record made from it must not exist. The seeds are
+    # listed, so the record alone names exactly which seeds and which rule the acceptance used.
+    if (
+        not isinstance(seeds, list)
+        or len(seeds) < SCOPE_MIN_COUNTED_SEEDS
+        or any(type(seed) is not int for seed in seeds)
+        or len(set(seeds)) != len(seeds)
+    ):
+        raise TargetResultError(
+            f"acceptance_scope counted_seeds must list at least {SCOPE_MIN_COUNTED_SEEDS} "
+            "distinct integer seeds"
+        )
+    if not isinstance(scope["rule"], str) or not scope["rule"]:
+        raise TargetResultError("acceptance_scope rule must name the rule")
+    if (
+        not isinstance(rule, str)
+        or len(rule) != 64
+        or any(c not in "0123456789abcdef" for c in rule)
+    ):
         raise TargetResultError("acceptance_scope rule_sha must be a sha256 hex digest")
 
 

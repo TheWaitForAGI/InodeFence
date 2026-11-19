@@ -203,6 +203,7 @@ async def test_finished_result_with_a_replayed_candidate(tmp_path: Path) -> None
         assert "round 3" in detail and syn.TAR.decode() not in detail
         await pilot.press("escape", "3", "enter")
         await pilot.pause()
+        assert app.query_one("#tabs").active == "artifacts"  # enter on a run opens its artifacts
         artifacts = _text(app, "#artifacts-body")
         assert "not re-checked" in artifacts and "result.json" in artifacts
 

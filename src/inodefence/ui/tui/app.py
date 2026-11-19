@@ -274,7 +274,7 @@ class InodeFenceTui(App[None]):
                         yield Static(model.CONTRACT_LEGEND, id="findings-legend")
                     yield _panel("p-finding-detail", "candidate")
             with TabPane("5 Artifacts", id="artifacts"):
-                with VerticalScroll(classes="box") as box:
+                with VerticalScroll(id="artifacts-box", classes="box") as box:
                     box.border_title = "artifacts"
                     box.border_subtitle = "metadata and hashes only"
                     yield Static(id="artifacts-body")
@@ -463,6 +463,11 @@ class InodeFenceTui(App[None]):
     def action_show(self, tab: str) -> None:
         self.query_one("#tabs", TabbedContent).active = tab
         tables = self.query_one(f"#{tab}", TabPane).query(DataTable)
+        if not tables:
+            # A screen without a table (Artifacts) takes the focus itself; otherwise focus stays
+            # on a hidden table and Textual switches back to that table's screen.
+            self.query_one(f"#{tab}-box").focus()
+            return
         if tables:
             table = tables.first()
             table.focus()  # keys move rows right away

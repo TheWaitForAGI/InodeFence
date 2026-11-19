@@ -28,7 +28,7 @@
 
 조립본 드래프트 v1이 있다. 읽는 순서·상태 범례는 [sections/00-outline.md](sections/00-outline.md)를
 본다. 드래프트는 방어 가능한 좁은 주장(M1 동작·M2 통제 재현·M4 oracle/adapter 일반성)만 적고,
-**effectiveness/성능 우위는 주장하지 않는다**(본실험 결과는 봉인 해제 뒤 기입). 능력
+**effectiveness/성능 우위는 주장하지 않는다**(본실험 H-A는 판정 완료: 비기각(분리 실패, HR 2 배제), 주장 목록 C-HA·S-HOLDOUT 행). 능력
 판정의 단일 기준은 [Capability Ledger](../docs/STATUS.md)이고, 주장↔증거 매핑은
 [sections/claims-evidence-status-v1.md](sections/claims-evidence-status-v1.md)다.
 

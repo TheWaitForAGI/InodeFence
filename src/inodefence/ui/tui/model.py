@@ -27,6 +27,7 @@ from inodefence.app.runs import (
     ReplayRecord,
     RunKind,
     RunListing,
+    RunRef,
     RunSnapshot,
     Source,
     Verdict,
@@ -219,6 +220,17 @@ def run_state(snapshot: RunSnapshot, now: float) -> Cell:
     return Cell("no live data", DIM)
 
 
+def run_state_short(snapshot: RunSnapshot, now: float) -> Cell:
+    """:func:`run_state` for table columns: a launcher-only run's estimate as a short label (the
+    campaign panel and the header keep the long wording with the log's age)."""
+    launcher = snapshot.launcher_state
+    if launcher is None:
+        return run_state(snapshot, now)
+    if launcher_activity(launcher.last_write, now) is LaunchActivity.ACTIVE:
+        return Cell(EST_ACTIVE, ACCENT)
+    return Cell(EST_QUIET, WARN)
+
+
 def is_active(snapshot: RunSnapshot, now: float) -> bool:
     launcher = snapshot.launcher_state
     if launcher is not None:
@@ -294,7 +306,7 @@ def header(state: DashboardState, selected: RunSnapshot | None) -> list[tuple[st
     run, status = Cell(NONE, DIM), Cell(NONE, DIM)
     if selected is not None:
         ref = selected.ref
-        run = Cell(f"{text(ref.target)}@{text(ref.version)}")
+        run = Cell(target_label(ref))
         status = run_state(selected, state.now)
     return [
         ("", Cell("InodeFence", ACCENT)),
@@ -491,7 +503,7 @@ def campaign_rows(state: DashboardState) -> list[Row]:
                 ref.key,
                 (
                     Cell(run_name(snapshot), ACCENT),
-                    run_state(snapshot, state.now),
+                    run_state_short(snapshot, state.now),
                     Cell(runs),
                     Cell(rate),
                     Cell(count(violations), BAD if violations else PLAIN),
@@ -578,7 +590,7 @@ def finding_detail(state: DashboardState, key: str) -> list[tuple[str, Cell]]:
         lines: list[tuple[str, Cell]] = [
             ("case", Cell(row.case_id, ACCENT)),
             ("run", Cell(text(snapshot.ref.run_id))),
-            ("target", Cell(f"{text(snapshot.ref.target)}@{text(snapshot.ref.version)}")),
+            ("target", Cell(target_label(snapshot.ref))),
             ("class", finding_class_cell(row.finding)),
             ("C0 / C1 / C2", Cell(" ".join(contract_cell(v).text for v in row.contracts.values()))),
             ("termination", Cell(row.termination.value)),
@@ -618,7 +630,7 @@ def artifact_lines(snapshot: RunSnapshot | None) -> list[tuple[str, Cell]]:
     lines: list[tuple[str, Cell]] = [
         ("run", Cell(f"{ref.kind.value} {text(ref.run_id)}", ACCENT)),
         ("folder", Cell(str(ref.root), DIM)),
-        ("target", Cell(f"{text(ref.target)}@{text(ref.version)}")),
+        ("target", Cell(target_label(ref))),
     ]
     summary = snapshot.summary
     if summary is None:
@@ -862,8 +874,8 @@ def runs_list(state: DashboardState) -> list[Row]:
             Row(
                 ref.key,
                 (
-                    Cell(run_name(snapshot), ACCENT),
-                    run_state(snapshot, state.now),
+                    Cell(run_name(snapshot, OVERVIEW_NAME_LIMIT), ACCENT),
+                    run_state_short(snapshot, state.now),
                     Cell(f"{mini} {runs}" if mini else runs),
                     Cell(count(violations), BAD if violations else PLAIN),
                 ),
@@ -872,11 +884,34 @@ def runs_list(state: DashboardState) -> list[Row]:
     return rows
 
 
+def target_label(ref: RunRef) -> str:
+    """``target@version``; ``target`` alone without a version; ``—`` when neither is known."""
+    if ref.target is None and ref.version is None:
+        return NONE
+    if ref.version is None:
+        return text(ref.target)
+    return f"{text(ref.target)}@{ref.version}"
+
+
+#: A launcher-only run's name in the run lists: its id is written only when it ends.
+NO_ID_YET = "(no id yet)"
+#: A launcher-only run's state in the tables, from its log's last write (estimated). Short on
+#: purpose: the Overview's runs table is 56 columns at 140x40 and the state column has 14 with
+#: its badge (the campaign panel and the header carry the long wording with the log's age).
+EST_ACTIVE = "est. live"
+EST_QUIET = "est. quiet"
+#: The Overview's run names (``node-tar@7.5.2 #1-20`` fits exactly; longer ones are cut).
+OVERVIEW_NAME_LIMIT = 20
+
+
 def run_name(snapshot: RunSnapshot, limit: int = 22) -> str:
     """``target@version``, or the run id when the files do not name the target yet."""
     ref = snapshot.ref
     if ref.kind is RunKind.EXPLORE and ref.run_id is None:
-        return shorten_middle(f"{ref.root.name} · id at end", limit)
+        room = limit - len(NO_ID_YET) - 1  # the end of the folder name identifies it
+        folder = ref.root.name
+        tail = folder if len(folder) <= room else "…" + folder[len(folder) - room + 1 :]
+        return f"{NO_ID_YET} {tail}" if room > 1 else NO_ID_YET
     if ref.target is None:
         return shorten_middle(text(ref.run_id), limit)
     name = f"{ref.target}@{text(ref.version)}"
@@ -910,8 +945,8 @@ def run_detail(snapshot: RunSnapshot | None, now: float) -> list[tuple[str, Cell
     runs, budget = (p.runs, p.budget) if p else (None, None)
     rate = f"{p.runs_per_second * 60:.1f} runs/min" if p and p.runs_per_second else UNKNOWN
     return [
-        ("run", Cell(text(ref.run_id), ACCENT)),
-        ("target", Cell(f"{text(ref.target)}@{text(ref.version)}")),
+        ("run", Cell(text(ref.run_id) if ref.run_id else NO_ID_YET, ACCENT)),
+        ("target", Cell(target_label(ref))),
         ("state", run_state(snapshot, now)),
         ("runs", Cell(f"{count(runs)} / {count(budget)}")),
         ("rate", Cell(rate)),

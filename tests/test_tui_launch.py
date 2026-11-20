@@ -160,3 +160,16 @@ def test_a_plan_that_does_not_finish_in_time_says_so(
         cwd=tmp_path, executable=fake["program"], timeout=0.5,
     )  # fmt: skip
     assert code is None and "no plan after" in output
+
+
+def test_only_commands_that_run_nothing_are_waited_for(
+    fake: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("FAKE_EXIT", "2")
+    code, output = launch.run_waited(
+        ["inodefence", "status", str(tmp_path)], cwd=tmp_path, executable=fake["program"]
+    )
+    assert code == 2 and "fake inodefence status" in output
+    for argv in (["inodefence", "explore", "--version", "latest"], ["inodefence", "replay", "x"]):
+        with pytest.raises(ValueError):
+            launch.run_waited(argv, cwd=tmp_path, executable=fake["program"])

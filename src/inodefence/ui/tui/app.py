@@ -28,10 +28,21 @@ from textual.widgets import DataTable, Footer, Static, TabbedContent, TabPane
 
 from inodefence.app.events import EventKind, RunFollower, UiEvent
 from inodefence.app.runs import RunSnapshot, default_roots, discover_runs
-from inodefence.ui.tui import model
+from inodefence.ui.tui import launch, model
+from inodefence.ui.tui.forms import CommandForm, command_forms
 from inodefence.ui.tui.model import Cell, DashboardState, Row, Sample
 from inodefence.ui.tui.palette import BAR_HIGH, BAR_LOW, BAR_MID, DEEP, PALETTE, PANEL
 from inodefence.ui.tui.palette import TITLE as TITLE_COLOUR
+from inodefence.ui.tui.screens_run import (
+    BUDGET_RECONFIRM,
+    RUN_CSS,
+    CommandFormScreen,
+    CommandPicker,
+    ConfirmScreen,
+    OutputScreen,
+    confirm_notes,
+    out_folder,
+)
 
 COLOURS = {
     model.OK: PALETTE["ok"],
@@ -224,12 +235,15 @@ class InodeFenceTui(App[None]):
                padding: 0 1; }}
     Footer {{ background: {PALETTE["surface_alt"]}; }}
     """
+    CSS += RUN_CSS
+
     BINDINGS = [
         Binding("1", "show('overview')", "Overview"),
         Binding("2", "show('targets')", "Targets"),
         Binding("3", "show('campaigns')", "Campaigns"),
         Binding("4", "show('findings')", "Flagged cases"),
         Binding("5", "show('artifacts')", "Artifacts"),
+        Binding("n", "new_command", "Run…"),
         Binding("r", "refresh_now", "Refresh"),
         Binding("question_mark", "help", "Help"),
         Binding("q", "quit", "Quit"),
@@ -247,8 +261,19 @@ class InodeFenceTui(App[None]):
         images: Callable[[], Mapping[str, int] | None] | None = default_images,
         background: bool = True,
         clock: Callable[[], float] = time.time,
+        cli: Path | None = None,
+        launch_root: Path | None = None,
+        cwd: Path | None = None,
     ) -> None:
         super().__init__()
+        #: the ``inodefence`` to start (``None``: :func:`launch.find_cli`; tests give a fake one)
+        self._cli = cli
+        #: where launch records go (``None``: ``$XDG_STATE_HOME/inodefence/launches``)
+        self._launch_root = launch_root
+        #: the working folder commands start in (``--out`` resolves against it, as in a terminal)
+        self._cwd = cwd
+        #: commands this screen started, newest first (records under ``launch_root``)
+        self.launches: list[launch.Launch] = []
         self.roots = [*(default_roots() if roots is None else roots), *extra]
         self.refresh_seconds = refresh
         self.follower = follower or RunFollower(roots=self.roots, interval=refresh, clock=clock)
@@ -527,6 +552,95 @@ class InodeFenceTui(App[None]):
         if name in SELECTING and 0 <= row < len(keys) and keys[row] != "-":
             self.selected_key = keys[row]  # the panels follow the row the cursor is on
             self.draw_selection()
+
+    # -- run a command (the CLI, exactly as typed; nothing else) ---------------------------------
+
+    def _forms(self) -> dict[str, CommandForm]:
+        return command_forms(registry=self.state.targets)
+
+    def _workdir(self) -> Path:
+        return self._cwd or Path.cwd()
+
+    def action_new_command(self) -> None:
+        forms = self._forms()
+        self.push_screen(CommandPicker(forms), lambda name: self._open_form(forms, name))
+
+    def _open_form(
+        self, forms: Mapping[str, CommandForm], name: str | None, preset: Mapping[str, Any] = {}
+    ) -> None:
+        if name is None or name not in forms:
+            return
+        form = forms[name]
+        targets = list(self.state.targets or ())
+        self.push_screen(
+            CommandFormScreen(form, targets=targets, preset=preset),
+            lambda result: self._filled(form, result),
+        )
+
+    def _filled(self, form: CommandForm, result: tuple[list[str], dict[str, Any]] | None) -> None:
+        if result is None:
+            return
+        argv, values = result
+        cwd = self._workdir()
+        try:
+            program = self._cli or launch.find_cli()
+        except launch.CommandNotFound as error:
+            self.notify(str(error), title="nothing started", severity="error")
+            return
+        if not form.starts_docker:  # runs nothing: waited for, output shown as printed
+            self.run_worker(lambda: self._run_waited(argv, cwd, program), thread=True)
+            return
+        running = [s.ref.target for s in self.state.snapshots.values()
+                   if model.is_active(s, self.state.now)]  # fmt: skip
+        notes = confirm_notes(form, values, cwd=cwd, roots=self.roots, running_targets=running)
+        budget = values.get("budget")
+        reconfirm = str(budget).isdigit() and int(str(budget)) > BUDGET_RECONFIRM
+        plan = (
+            (lambda: launch.run_plan(argv, cwd=cwd, executable=program))
+            if form.has_dry_run
+            else None
+        )
+        self.push_screen(
+            ConfirmScreen(argv, cwd=cwd, program=str(program), notes=notes, plan=plan,
+                          reconfirm=reconfirm),
+            lambda start: self._start(argv, values, cwd, program) if start else None,
+        )  # fmt: skip
+
+    def _run_waited(self, argv: list[str], cwd: Path, program: Path) -> None:
+        code, output = launch.run_waited(argv, cwd=cwd, executable=program)
+        tail = "exit ? (no answer in time)" if code is None else f"exit {code}"
+        self.call_from_thread(self.push_screen, OutputScreen(argv, f"{output.rstrip()}\n\n{tail}"))
+
+    def _start(self, argv: list[str], values: Mapping[str, Any], cwd: Path, program: Path) -> None:
+        try:
+            started = launch.start(argv, cwd=cwd, root=self._launch_root, executable=program)
+        except (OSError, ValueError) as error:
+            self.notify(
+                f"{type(error).__name__}: {error}", title="nothing started", severity="error"
+            )
+            return
+        self.launches.insert(0, started)
+        out = out_folder(values, cwd)
+        if out is not None and not any(
+            out.resolve().is_relative_to(Path(root).expanduser().resolve()) for root in self.roots
+        ):
+            self._add_session_root(out)
+        self.notify(" ".join(argv), title="started (keeps running if this screen closes)")
+
+    def _add_session_root(self, folder: Path) -> None:
+        """Scan ``folder`` too, for this session only (decided 2026-11-20): a new follower over the
+        longer list replaces the old one; later sessions do not scan it on their own."""
+        self.roots.append(folder)
+        self.state.roots = tuple(self.roots)
+        old = self.follower
+        self._subscription.close()
+        old.stop(timeout=2)
+        self.follower = RunFollower(
+            roots=self.roots, interval=self.refresh_seconds, clock=self._clock
+        )
+        self._subscription = self.follower.subscribe()
+        if self._background:
+            self.follower.start()
 
     def action_refresh_now(self) -> None:
         self.follower.poll_once()

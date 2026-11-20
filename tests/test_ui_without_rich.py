@@ -41,6 +41,8 @@ EXEMPT: dict[str, frozenset[str]] = {
     "components.py": frozenset({"rich"}),
     "results.py": frozenset({"rich"}),
     "tui/app.py": frozenset({"rich", "textual"}),
+    # the run screens (pick, form, confirm, output): Textual screens loaded only by tui/app.py
+    "tui/screens_run.py": frozenset({"rich", "textual"}),
     "web/_app.py": frozenset({"fastapi", "starlette"}),
 }
 LAZY_ONLY = set(EXEMPT)

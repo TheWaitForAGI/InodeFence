@@ -193,6 +193,37 @@ def wait(launch: Launch, timeout: float, poll: float = 0.05) -> Launch:
 PLAN_TIMEOUT_SECONDS = 60.0
 
 
+#: Commands that run nothing and are waited for in the TUI (their output is shown as printed).
+WAITED_COMMANDS = frozenset({"doctor", "targets", "status", "summary", "compare"})
+
+
+def run_waited(
+    argv: Sequence[str],
+    *,
+    cwd: Path,
+    executable: Path | None = None,
+    timeout: float = PLAN_TIMEOUT_SECONDS,
+) -> tuple[int | None, str]:
+    """Run ``argv`` and wait for it: ``(exit code, what it printed)``; ``None`` as the code when it
+    did not finish in ``timeout``. Only for commands that start no extractor: a ``--dry-run`` plan
+    (:func:`run_plan`) or one of :data:`WAITED_COMMANDS`."""
+    if not argv or argv[0] != CLI_NAME:
+        raise ValueError(f"only `{CLI_NAME} ...` commands are run, got {list(argv)!r}")
+    if "--dry-run" not in argv and (len(argv) < 2 or argv[1] not in WAITED_COMMANDS):
+        raise ValueError(f"{list(argv)!r} may start Docker: it is started detached, not waited for")
+    program = executable if executable is not None else find_cli()
+    try:
+        done = subprocess.run(  # noqa: S603 -- the CLI's own command
+            [str(program), *argv[1:]], cwd=cwd, stdin=subprocess.DEVNULL, capture_output=True,
+            text=True, timeout=timeout, check=False,
+        )  # fmt: skip
+    except subprocess.TimeoutExpired as error:
+        raw = error.stdout  # text=True gives str, but the exception's type allows bytes too
+        out = raw.decode(errors="replace") if isinstance(raw, bytes) else str(raw or "")
+        return None, out + f"\n(no answer after {timeout:.0f} s)"
+    return done.returncode, (done.stdout or "") + (done.stderr or "")
+
+
 def run_plan(
     argv: Sequence[str],
     *,
@@ -207,15 +238,8 @@ def run_plan(
     """
     if not argv or argv[0] != CLI_NAME:
         raise ValueError(f"only `{CLI_NAME} ...` commands are planned, got {list(argv)!r}")
-    program = executable if executable is not None else find_cli()
-    planned = [str(program), *argv[1:]] + ([] if "--dry-run" in argv else ["--dry-run"])
-    try:
-        done = subprocess.run(  # noqa: S603 -- the CLI's own command, with --dry-run
-            planned, cwd=cwd, stdin=subprocess.DEVNULL, capture_output=True, text=True,
-            timeout=timeout, check=False,
-        )  # fmt: skip
-    except subprocess.TimeoutExpired as error:
-        raw = error.stdout  # text=True gives str, but the exception's type allows bytes too
-        out = raw.decode(errors="replace") if isinstance(raw, bytes) else str(raw or "")
-        return None, out + f"\n(no plan after {timeout:.0f} s)"
-    return done.returncode, (done.stdout or "") + (done.stderr or "")
+    planned = [*argv] + ([] if "--dry-run" in argv else ["--dry-run"])
+    code, output = run_waited(planned, cwd=cwd, executable=executable, timeout=timeout)
+    if code is None:
+        output = output.replace("(no answer after", "(no plan after")
+    return code, output

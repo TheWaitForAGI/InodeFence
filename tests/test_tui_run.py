@@ -1,0 +1,211 @@
+"""Running a command from the TUI, end to end with the fake ``inodefence`` (nothing real runs):
+pick, fill, confirm (focus on Cancel), start; plan; large budgets; commands that run nothing."""
+
+from __future__ import annotations
+
+import asyncio
+import functools
+import json
+import time
+from pathlib import Path
+from typing import Any
+
+import pytest
+
+pytest.importorskip("textual")
+
+from tests import app_synthetic as syn  # noqa: E402
+from tests import tui_fake_cli  # noqa: E402
+from textual.widgets import Button, Input, OptionList, Static  # noqa: E402
+
+from inodefence.app.events import RunFollower  # noqa: E402
+from inodefence.ui.tui import launch  # noqa: E402
+from inodefence.ui.tui.app import InodeFenceTui  # noqa: E402
+from inodefence.ui.tui.screens_run import (  # noqa: E402
+    PRODUCT_RUN,
+    CommandFormScreen,
+    CommandPicker,
+    ConfirmScreen,
+    OutputScreen,
+)
+
+REGISTRY = {"node-tar": {"explore": True, "replay": True, "options": []},
+            "python-tarfile": {"explore": True, "replay": True, "options": [
+                {"name": "extraction-filter", "description": "filter", "required": True,
+                 "choices": ["fully_trusted", "data"], "single": True}]}}  # fmt: skip
+
+
+def _sync(test):
+    @functools.wraps(test)
+    def run(*args: Any, **kwargs: Any) -> None:
+        asyncio.run(test(*args, **kwargs))
+
+    return run
+
+
+@pytest.fixture
+def setup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
+    program = tui_fake_cli.install(tmp_path / "bin")
+    argv_log = tmp_path / "argv.jsonl"
+    monkeypatch.setenv("FAKE_ARGV_LOG", str(argv_log))
+    root = syn.explore_out(tmp_path / "scanned")
+    app = InodeFenceTui(
+        roots=[root], follower=RunFollower(roots=[root], clock=syn.Clock()), background=False,
+        clock=syn.Clock(), doctor=lambda: ("OK", "synthetic"), targets=lambda: REGISTRY,
+        images=lambda: None, cli=program, launch_root=tmp_path / "launches", cwd=tmp_path,
+    )  # fmt: skip
+    app.load_now()
+    return {"app": app, "argv_log": argv_log, "launches": tmp_path / "launches", "tmp": tmp_path}
+
+
+def _seen(log: Path) -> list[list[str]]:
+    return [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []
+
+
+async def _to_form(app: InodeFenceTui, pilot: Any, command: str) -> CommandFormScreen:
+    await pilot.press("n")
+    await pilot.pause()
+    assert isinstance(app.screen, CommandPicker)
+    options = app.screen.query_one(OptionList)
+    index = next(
+        i for i in range(options.option_count) if options.get_option_at_index(i).id == command
+    )
+    options.highlighted = index
+    await pilot.press("enter")
+    await pilot.pause()
+    assert isinstance(app.screen, CommandFormScreen) and app.screen.form.name == command
+    return app.screen
+
+
+def _fill(screen: CommandFormScreen, **values: str) -> None:
+    for dest, value in values.items():
+        screen.query_one(f"#field-{dest}", Input).value = value
+
+
+async def _press(app: InodeFenceTui, pilot: Any, button: str) -> None:
+    app.screen.query_one(f"#{button}", Button).press()
+    await pilot.pause()
+    await pilot.pause()
+
+
+@_sync
+async def test_the_confirmation_shows_the_whole_command_and_enter_cancels(setup) -> None:
+    app = setup["app"]
+    async with app.run_test(size=(140, 44)) as pilot:
+        form = await _to_form(app, pilot, "explore")
+        _fill(form, version="7.5.2", seed="7")
+        await _press(app, pilot, "form-continue")
+        assert isinstance(app.screen, ConfirmScreen)
+        command = str(app.screen.query_one("#confirm-command", Static).content)
+        assert command == "inodefence explore --version 7.5.2 --seed 7"
+        assert PRODUCT_RUN in str(app.screen.query_one("#confirm-notes", Static).content)
+        assert app.focused is app.screen.query_one("#confirm-cancel", Button)  # focus on Cancel
+        await pilot.press("enter")
+        await pilot.pause()
+        assert not isinstance(app.screen, ConfirmScreen)
+    assert _seen(setup["argv_log"]) == [] and app.launches == []  # nothing started
+
+
+@_sync
+async def test_start_runs_exactly_the_shown_command(setup) -> None:
+    app = setup["app"]
+    async with app.run_test(size=(140, 44)) as pilot:
+        form = await _to_form(app, pilot, "explore")
+        _fill(form, version="latest")
+        await _press(app, pilot, "form-continue")
+        await _press(app, pilot, "confirm-start")
+        assert len(app.launches) == 1
+    done = launch.wait(app.launches[0], timeout=20)
+    assert done.exit_code == 0 and _seen(setup["argv_log"]) == [["explore", "--version", "latest"]]
+
+
+@_sync
+async def test_a_large_budget_needs_start_twice(setup) -> None:
+    app = setup["app"]
+    async with app.run_test(size=(140, 44)) as pilot:
+        form = await _to_form(app, pilot, "explore")
+        _fill(form, version="latest", budget="2500")
+        await _press(app, pilot, "form-continue")
+        notes = str(app.screen.query_one("#confirm-notes", Static).content)
+        assert "budget 2500 is above 2000" in notes
+        await _press(app, pilot, "confirm-start")
+        assert isinstance(app.screen, ConfirmScreen) and app.launches == []  # asked once more
+        await _press(app, pilot, "confirm-start")
+        assert len(app.launches) == 1
+    launch.wait(app.launches[0], timeout=20)
+
+
+@_sync
+async def test_the_plan_is_the_dry_run_and_starts_nothing(setup) -> None:
+    app = setup["app"]
+    async with app.run_test(size=(140, 44)) as pilot:
+        form = await _to_form(app, pilot, "verify")
+        _fill(form, version="7.5.2")
+        await _press(app, pilot, "form-continue")
+        await _press(app, pilot, "confirm-plan-button")
+        deadline = time.monotonic() + 20
+        while "plan (exit" not in str(app.screen.query_one("#confirm-plan-body", Static).content):
+            assert time.monotonic() < deadline
+            await pilot.pause(0.05)
+        body = str(app.screen.query_one("#confirm-plan-body", Static).content)
+        assert "fake inodefence verify --version 7.5.2 --dry-run" in body
+        assert app.launches == []
+    assert _seen(setup["argv_log"]) == [["verify", "--version", "7.5.2", "--dry-run"]]
+
+
+@_sync
+async def test_a_command_that_runs_nothing_shows_its_output_and_code(setup, monkeypatch) -> None:
+    monkeypatch.setenv("FAKE_EXIT", "2")
+    app = setup["app"]
+    async with app.run_test(size=(140, 44)) as pilot:
+        form = await _to_form(app, pilot, "status")
+        _fill(form, folder=str(setup["tmp"]))
+        await _press(app, pilot, "form-continue")
+        deadline = time.monotonic() + 20
+        while not isinstance(app.screen, OutputScreen):
+            assert time.monotonic() < deadline
+            await pilot.pause(0.05)
+        body = str(app.screen.query_one("#output-body", Static).content)
+        assert "fake inodefence status" in body and body.rstrip().endswith("exit 2")
+    assert app.launches == []  # waited for, not started detached
+
+
+@_sync
+async def test_an_out_folder_elsewhere_is_scanned_for_this_session(setup) -> None:
+    app = setup["app"]
+    elsewhere = setup["tmp"] / "elsewhere"
+    async with app.run_test(size=(140, 44)) as pilot:
+        form = await _to_form(app, pilot, "explore")
+        _fill(form, version="latest", out=str(elsewhere))
+        await _press(app, pilot, "form-continue")
+        notes = str(app.screen.query_one("#confirm-notes", Static).content)
+        assert "outside this screen's folders" in notes
+        await _press(app, pilot, "confirm-start")
+        assert elsewhere in app.roots
+    launch.wait(app.launches[0], timeout=20)
+
+
+@_sync
+async def test_an_empty_required_field_keeps_the_form_open(setup) -> None:
+    app = setup["app"]
+    async with app.run_test(size=(140, 44)) as pilot:
+        await _to_form(app, pilot, "explore")
+        await _press(app, pilot, "form-continue")
+        assert isinstance(app.screen, CommandFormScreen)
+        assert "--version" in str(app.screen.query_one("#form-error", Static).content)
+    assert app.launches == []
+
+
+@_sync
+async def test_the_picker_marks_the_commands_that_start_docker(setup) -> None:
+    app = setup["app"]
+    async with app.run_test(size=(140, 44)) as pilot:
+        await pilot.press("n")
+        await pilot.pause()
+        options = app.screen.query_one(OptionList)
+        marked = {
+            options.get_option_at_index(i).id
+            for i in range(options.option_count)
+            if "starts Docker" in str(options.get_option_at_index(i).prompt)
+        }
+        assert marked == {"verify", "explore", "replay"}

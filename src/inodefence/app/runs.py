@@ -551,7 +551,9 @@ def _row_from_live_case(record: Mapping[str, Any], live_dir: Path) -> CaseRow:
         input_path=live_dir / folder / tar if folder and tar else None,
         recorded_at=_str(record.get("recorded_at")),
         source=Source.LIVE,
-        **contracts,
+        c0=contracts["c0"],
+        c1=contracts["c1"],
+        c2=contracts["c2"],
     )
 
 

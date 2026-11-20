@@ -20,9 +20,22 @@ import inodefence
 SRC = Path(inodefence.__file__).resolve().parent
 #: Every module whose strings can reach a screen: the three interfaces, their read model and the
 #: command line itself.
-SCREENS = sorted([*(SRC / "ui").rglob("*.py"), *(SRC / "app").glob("*.py"), SRC / "cli.py"])
+#: Plus the two engine-side modules that draw screens: the explore progress and end lines
+#: (drivers/progress.py) and the summary page (target_result_summary.py) -- QA.
+SCREENS = sorted([*(SRC / "ui").rglob("*.py"), *(SRC / "app").glob("*.py"), SRC / "cli.py",
+                  SRC / "drivers" / "progress.py", SRC / "target_result_summary.py"])  # fmt: skip
 POSITIVE_CONFIRMED = re.compile(r"(?<!not[ _])confirmed", re.IGNORECASE)
 FORBIDDEN = (POSITIVE_CONFIRMED, re.compile(r"vulnerab", re.IGNORECASE), re.compile("취약점"))
+#: Reviewed disclaimers that name the word only to deny it ("a violation is a candidate, not a
+#: confirmed vulnerability"; "calling it one needs reproduction and root-cause analysis"). Exact
+#: strings: any other use, or an edit of these, is checked again.
+DISCLAIMERS = {
+    ("target_result_summary.py",
+     "). 전 실행을 한 줄씩 담지 않고, 위반 입력만 아래에 둔다. "
+     "위반은 위반 후보이며 확정 취약점이 아니다."),
+    ("target_result_summary.py",
+     "- ‘위반’은 위반 후보다. 확정된 취약점으로 보려면 재현과 원인 분석이 따로 필요하다."),
+}  # fmt: skip
 
 
 def screen_strings(path: Path) -> list[tuple[int, str]]:
@@ -50,6 +63,7 @@ def test_no_screen_string_overclaims(path: Path) -> None:
         f"{path.relative_to(SRC)}:{line}: {text!r}"
         for line, text in screen_strings(path)
         if any(pattern.search(text) for pattern in FORBIDDEN)
+        and (str(path.relative_to(SRC)), text) not in DISCLAIMERS
     ]
     assert bad == []
 

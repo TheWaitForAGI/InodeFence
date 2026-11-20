@@ -335,7 +335,10 @@ wheel로만 설치하면(클론 없음, `INODEFENCE_HOME` 없음) 대시보드�
 픽스처나 합성 진행 값으로 화면만 그려 본 것이고, 실제 추출기를 돌려 본 것이 아닙니다. 아래 결과(판정, 위반 수)는
 실행마다 다를 수 있으며, 여기 적은 화면 구성이 그 값을 보장하지 않습니다.
 
-TUI의 실행 기능은 테스트(`tests/test_tui_run.py`)와 개발 중 스크린숏에서 가짜 `inodefence`(실제 Docker 없음)로 확인한 것이고, 실제 실행 화면은 이 안내서에서 보지 않았습니다.
+TUI의 실행 기능은 테스트(`tests/test_tui_run.py`)와 개발 중 스크린숏에서 가짜 `inodefence`(실제 Docker 없음)로 확인했고, 검토자(QA)가 이 호스트의 Docker에서 **TUI로 실제 실행을 시작해** 확인했습니다(2026-11-20): node-tar `latest`(7.5.23으로
+해석)의 verify·explore와 7.5.2의 verify·explore. TUI가 띄운 실행의 `result.json`은 CLI로 띄운 것과 시각·경로 필드를 빼면
+같았습니다. `--auto-prepare` 없이 준비되지 않은 이미지로 시작하면 CLI가 종료 3으로 거부하고 Docker 실행은 없었습니다.
+replay는 위반 후보가 없어 실제로 돌리지 않았습니다(가짜 `inodefence`로만 확인).
 
 1. **환경 점검과 대상 목록.** `inodefence doctor`, `inodefence targets`
    - 화면: 브랜드 머리줄, 상태 카드(OK·WARN·FAIL·UNKNOWN), 구획(Environment·Storage·Docker·Development), 끝의 결과
@@ -344,21 +347,24 @@ TUI의 실행 기능은 테스트(`tests/test_tui_run.py`)와 개발 중 스크�
    - TUI에서도: `n` → `doctor` 또는 `targets`(확인 없이 실행하고 출력을 보여 줌).
    - 확인: 실제 호스트의 pty에서 두 명령 모두 종료 0. 화면 구성은 가짜 Docker 응답으로도 확인.
 2. **node-tar 검사와 두 버전 대조.**
-   `inodefence verify --target node-tar --version 7.5.23 --auto-prepare --out out/verify-nt`
+   `inodefence verify --target node-tar --version latest --auto-prepare --out out/verify-nt`
    - 화면: 드라이버의 기존 줄 뒤에 이 실행이 쓴 셀의 결과 화면(판정, 위반 n/m, 케이스 표의 입력 SHA-256과 C0·C1·C2,
      증거 경로)이 붙습니다.
    - 두 버전을 나란히 보려면 다른 버전으로 한 번 더 verify한 뒤
      `inodefence compare <A의 result.json> <B의 result.json>`. 양쪽에 기록된 입력 SHA-256이 같은 케이스만 "same"입니다.
+     알려진 회귀를 보이는 대조는 `--version 7.5.2`와 `--version 7.5.3`입니다.
    - 필요한 것: Docker와 이미지(실제 실행).
    - TUI에서도: Targets에서 대상을 고르고 `v` → 폼 → 확인 창의 Start. 두 결과는 결과 행에서 `c`, 다른 결과 행에서 `c`.
-   - 확인: 합성(계약 픽스처와 그 사본). 실제 verify 뒤의 화면은 이 안내서에서 보지 않았습니다.
-3. **탐색.** `inodefence explore --target node-tar --version 7.5.23 --budget 40 --seed 123 --auto-prepare --out out/explore-nt`
+   - 확인: CLI 결과 화면의 구성은 합성(계약 픽스처와 그 사본)으로 봤습니다. TUI에서 시작한 실제 verify(QA, 2026-11-20):
+     node-tar `latest`(7.5.23으로 해석)는 PASS, 7.5.2는 FAIL(위반 2/5, 알려진 회귀 픽스처). 최신 버전에서도 동작합니다.
+3. **탐색.** `inodefence explore --target node-tar --version latest --budget 40 --seed 123 --auto-prepare --out out/explore-nt`
    - 화면: 실행 막대(실행 수/예산), 카드(위반, 미판정, 처리량, 경과), 종료 상태 막대와 C0·C1·C2, ETA(추정)와 런처
      단계(런처 로그에서 읽음) 한 줄. 끝나면 마지막 화면, 결과 패널, 기존 마지막 줄이 남습니다.
    - python-tarfile·decompress·oras-go는 실행 중 수치가 없어(`?`) 막대 없이 단계만 보입니다.
    - 필요한 것: Docker와 이미지(실제 실행, 수 분).
    - TUI에서도: Targets에서 `e` → 폼 → 확인 창의 Start(예산이 2000을 넘으면 Start 두 번). TUI를 닫아도 탐색은 계속됩니다.
-   - 확인: 합성 진행 값으로 그린 중간·끝 화면. 실제 탐색 중의 화면은 이 안내서에서 보지 않았습니다.
+   - 확인: CLI 진행 화면은 합성 진행 값으로 그린 중간·끝 화면을 봤습니다. TUI에서 시작한 실제 explore(QA, 2026-11-20):
+     node-tar 7.5.2(seed 123, 예산 20)는 PASS·위반 후보 0건, `latest`(7.5.23으로 해석)도 PASS.
 4. **상태와 요약.** `inodefence status out/explore-nt`,
    `inodefence summary out/explore-nt/target-explore/<실행>-result/result.json`
    - 화면: `status`는 판정 카드와 결과 표, `summary`는 같은 마크다운을 그린 것. 원래 글자는 `--plain`.

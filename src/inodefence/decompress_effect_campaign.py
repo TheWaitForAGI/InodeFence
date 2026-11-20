@@ -399,6 +399,21 @@ class DecompressEffectCampaignResult:
         return any(step.decision.contract_violated for step in self.steps)
 
 
+@dataclass(frozen=True, slots=True, kw_only=True)
+class DecompressLightResult(LightCampaignResult):
+    """A non-retaining (or early-stopped) decompress campaign: the common aggregate plus what the
+    report needs besides the per-step records -- config, seeds, final stats and the hit flag.
+
+    Still a :class:`LightCampaignResult` for every existing caller; the per-step records are
+    streamed to ``on_step`` (see :class:`DecompressReportCollector`), never kept here (#542).
+    """
+
+    config: DecompressEffectCampaignConfig
+    initial_case_ids: tuple[str, ...] = ()
+    final_stats: DecompressEffectStats
+    discovered_violation: bool = False
+
+
 DecompressResultProducer = Callable[[ArchiveCase], DecompressFrameRun]
 DecompressStepObserver = Callable[[DecompressEffectStep], None]
 
@@ -446,7 +461,7 @@ def run_decompress_effect_campaign(
     on_step: DecompressStepObserver | None = None,
     *,
     hooks: CampaignHooks,
-) -> DecompressEffectCampaignResult | LightCampaignResult: ...
+) -> DecompressEffectCampaignResult | DecompressLightResult: ...
 
 
 def run_decompress_effect_campaign(
@@ -455,7 +470,7 @@ def run_decompress_effect_campaign(
     config: DecompressEffectCampaignConfig,
     on_step: DecompressStepObserver | None = None,
     hooks: CampaignHooks | None = None,
-) -> DecompressEffectCampaignResult | LightCampaignResult:
+) -> DecompressEffectCampaignResult | DecompressLightResult:
     """Drive the generic fuzz loop over a real-decompress producer; self-discover C0/C1/C2 hits.
 
     ``on_step`` receives each completed step right after feedback and scheduler bookkeeping, so a
@@ -484,6 +499,7 @@ def run_decompress_effect_campaign(
     should_stop = hooks.should_stop if hooks is not None else None
     retain = hooks is None or hooks.retain_steps
     executed = 0
+    discovered = False  # any step's generic oracle verdict violated (for a non-retaining result)
     stop_reason: str | None = None
 
     state = DecompressEffectSearchState(cases, config.search_policy)
@@ -506,13 +522,14 @@ def run_decompress_effect_campaign(
         attempt: MutationAttempt | None = None,
         selection: MutationSelection | None = None,
     ) -> None:
-        nonlocal executed
+        nonlocal executed, discovered
         run = produce_result(case)
         if not isinstance(run, DecompressFrameRun) or run.base_result.case != case:
             raise ValueError("producer must return a DecompressFrameRun for the requested case")
         if state_aware:
             observed_names.update(_observed_name_segments(run, exclude_external=blind_observation))
         decision = state.consider(run)
+        discovered = discovered or decision.contract_violated
         if (attempt is None) != (selection is None):
             raise ValueError("mutation attempt and scheduler selection must appear together")
         scheduler_evidence = None
@@ -557,7 +574,16 @@ def run_decompress_effect_campaign(
     # The full result type requires a complete run (len(steps) == budget), so a non-retaining run
     # OR an early stop returns the lightweight aggregate instead (same rule as the node-tar loop).
     if not retain or stop_reason is not None:
-        return LightCampaignResult(executed, config.execution_budget, stop_reason, retained)
+        return DecompressLightResult(
+            executed,
+            config.execution_budget,
+            stop_reason,
+            retained,
+            config=config,
+            initial_case_ids=initial_ids,
+            final_stats=state.stats,
+            discovered_violation=discovered,
+        )
     return DecompressEffectCampaignResult(
         config,
         initial_ids,
@@ -581,69 +607,135 @@ def decompress_effect_campaign_report(
         raise ValueError("report requires a DecompressEffectCampaignResult")
     if not isinstance(producer, str) or not producer:
         raise ValueError("report requires a producer label")
-    steps: list[dict[str, object]] = []
-    for step in result.steps:
-        base = step.run.base_result
-        decision = step.decision
-        steps.append(
-            {
-                "index": step.index,
-                "origin": step.origin.value,
-                "case_id": base.case.case_id,
-                "parent_case_id": step.parent_case_id,
-                "termination": base.execution.status.value,
-                # Whether the worker finished (succeeded or refused), so the post-state judgement
-                # is meaningful; a failed/timed-out step is unjudged, never a clean negative.
-                "judged": base.execution.status.value in ("success", "rejected"),
-                "oracle": {v.contract_id.value: v.violated for v in base.violations},
-                "frame_observed": decision.frame_observed,
-                "frame_attempts": len(step.run.frame["attempts"]) if step.run.frame else 0,
-                "frame_error": step.run.frame_error,
-                # Arm-independent frame observation of each boundary-gradient rung, so an A/C/D
-                # roll-up reads boundary-attempt vs external-resolve rate off any arm's evidence.
-                "boundary_attempt_present": decision.frame_boundary_attempt_present,
-                "external_resolve_present": decision.frame_external_resolve_present,
-                "new_attempt_keys": len(decision.new_attempt_keys),
-                "new_violation_fingerprints": len(decision.new_violation_fingerprints),
-                "full_state_novel": decision.full_state_novel,
-                "contract_violated": decision.contract_violated,
-                "reward": decision.reward,
-                "retained": decision.retained,
-                "operator_id": (
-                    step.mutation_attempt.operator_id.value if step.mutation_attempt else None
-                ),
-            }
-        )
+    return _report_dict(
+        result.config,
+        result.initial_case_ids,
+        [decompress_step_record(step) for step in result.steps],
+        result.discovered_violation,
+        result.final_stats,
+        result.retained_case_ids,
+        [_violation_input(step) for step in result.steps if step.decision.contract_violated],
+        producer=producer,
+        label=label,
+    )
+
+
+def decompress_step_record(step: DecompressEffectStep) -> dict[str, object]:
+    """One step of the decompress campaign report (the ``steps`` entry), from the typed step."""
+    base = step.run.base_result
+    decision = step.decision
+    return {
+        "index": step.index,
+        "origin": step.origin.value,
+        "case_id": base.case.case_id,
+        "parent_case_id": step.parent_case_id,
+        "termination": base.execution.status.value,
+        # Whether the worker finished (succeeded or refused), so the post-state judgement
+        # is meaningful; a failed/timed-out step is unjudged, never a clean negative.
+        "judged": base.execution.status.value in ("success", "rejected"),
+        "oracle": {v.contract_id.value: v.violated for v in base.violations},
+        "frame_observed": decision.frame_observed,
+        "frame_attempts": len(step.run.frame["attempts"]) if step.run.frame else 0,
+        "frame_error": step.run.frame_error,
+        # Arm-independent frame observation of each boundary-gradient rung, so an A/C/D
+        # roll-up reads boundary-attempt vs external-resolve rate off any arm's evidence.
+        "boundary_attempt_present": decision.frame_boundary_attempt_present,
+        "external_resolve_present": decision.frame_external_resolve_present,
+        "new_attempt_keys": len(decision.new_attempt_keys),
+        "new_violation_fingerprints": len(decision.new_violation_fingerprints),
+        "full_state_novel": decision.full_state_novel,
+        "contract_violated": decision.contract_violated,
+        "reward": decision.reward,
+        "retained": decision.retained,
+        "operator_id": (step.mutation_attempt.operator_id.value if step.mutation_attempt else None),
+    }
+
+
+def _report_dict(
+    config: DecompressEffectCampaignConfig,
+    initial_case_ids: tuple[str, ...],
+    steps: list[dict[str, object]],
+    discovered_violation: bool,
+    final_stats: DecompressEffectStats,
+    retained_case_ids: tuple[str, ...],
+    violation_inputs: list[dict[str, object]],
+    *,
+    producer: str,
+    label: str | None,
+) -> dict[str, object]:
+    """The report's one shape, shared by the full-result path and the streaming collector."""
     return {
         "decompress_campaign_schema": 1,
         "producer": producer,
         "label": label,
         "config": {
-            "random_seed": result.config.random_seed,
-            "execution_budget": result.config.execution_budget,
-            "mutation_policy": result.config.mutation_policy.value,
-            "search_policy": result.config.search_policy.value,
-            "adaptive_scheduler": result.config.adaptive_scheduler,
+            "random_seed": config.random_seed,
+            "execution_budget": config.execution_budget,
+            "mutation_policy": config.mutation_policy.value,
+            "search_policy": config.search_policy.value,
+            "adaptive_scheduler": config.adaptive_scheduler,
         },
-        "initial_case_ids": list(result.initial_case_ids),
-        "discovered_violation": result.discovered_violation,
+        "initial_case_ids": list(initial_case_ids),
+        "discovered_violation": discovered_violation,
         "final_stats": {
-            "observations": result.final_stats.observations,
-            "eligible_observations": result.final_stats.eligible_observations,
-            "retained_cases": result.final_stats.retained_cases,
-            "unique_attempt_keys": result.final_stats.unique_attempt_keys,
-            "unique_violation_fingerprints": result.final_stats.unique_violation_fingerprints,
-            "unique_full_states": result.final_stats.unique_full_states,
+            "observations": final_stats.observations,
+            "eligible_observations": final_stats.eligible_observations,
+            "retained_cases": final_stats.retained_cases,
+            "unique_attempt_keys": final_stats.unique_attempt_keys,
+            "unique_violation_fingerprints": final_stats.unique_violation_fingerprints,
+            "unique_full_states": final_stats.unique_full_states,
         },
         "steps": steps,
-        "retained_case_ids": list(result.retained_case_ids),
+        "retained_case_ids": list(retained_case_ids),
         # Added for reproduction (existing keys unchanged): the exact archive of every step whose
         # generic oracle reported a violation, built by the same ``build_tar`` the run used. Only
         # violating steps are kept, so a large budget does not store every case.
-        "violation_inputs": [
-            _violation_input(step) for step in result.steps if step.decision.contract_violated
-        ],
+        "violation_inputs": violation_inputs,
     }
+
+
+class DecompressReportCollector:
+    """Streaming report (#542): ``add`` keeps each step's report record and, for a violating
+    step, its input; the full run (snapshots, frames) is dropped. ``report`` then builds the same
+    report as :func:`decompress_effect_campaign_report` does from a retained result.
+
+    Use as ``hooks=CampaignHooks(on_step=collector.add, retain_steps=False)``.
+    """
+
+    def __init__(self, *, producer: str, label: str | None = None) -> None:
+        if not isinstance(producer, str) or not producer:
+            raise ValueError("report requires a producer label")
+        self.producer = producer
+        self.label = label
+        self.steps: list[dict[str, object]] = []
+        self.violation_inputs: list[dict[str, object]] = []
+
+    def add(self, step: DecompressEffectStep) -> None:
+        self.steps.append(decompress_step_record(step))
+        if step.decision.contract_violated:
+            self.violation_inputs.append(_violation_input(step))
+
+    def report(
+        self, result: DecompressLightResult | DecompressEffectCampaignResult
+    ) -> dict[str, object]:
+        """The report for a non-retaining run; a retained result is refused."""
+        if not isinstance(result, DecompressLightResult):
+            raise ValueError("collector report requires a DecompressLightResult")
+        if result.config is None or result.final_stats is None:
+            raise ValueError("light result lacks config or final stats")
+        if result.executed != len(self.steps):
+            raise ValueError(f"collected {len(self.steps)} steps, the loop ran {result.executed}")
+        return _report_dict(
+            result.config,
+            result.initial_case_ids,
+            self.steps,
+            result.discovered_violation,
+            result.final_stats,
+            result.retained_case_ids,
+            self.violation_inputs,
+            producer=self.producer,
+            label=self.label,
+        )
 
 
 def _violation_input(step: DecompressEffectStep) -> dict[str, object]:

@@ -71,6 +71,7 @@
 - python-tarfile 탐색의 케이스 번호(`step-N`, `run_index`)와 `campaign.runs_to_first_violation`을 추출 횟수가 아니라
   build-invalid를 포함한 루프 step 수로 센다(node-tar와 같은 단위, D060). v2 정책에서만 드러나는 번호 정합이다: build-invalid
   step이 없는 실행(기본 정책 전부)은 번호가 그대로이고, 이미 기록된 결과는 다시 세지 않는다.
+- decompress·oras-go 탐색이 2000을 넘는 `--budget`을 받는다([D066](docs/DECISIONS.md), #542). 두 대상의 루프 보고서는 실행 중 스텝 전체를 메모리에 쌓지 않고 스텝 기록만 모아 쓴다. 보고서·`result.json`·`summary.md`의 바이트는 그대로다. 다른 모드의 예산 상한(2000)은 그대로다.
 - 새 선택 키가 든 `result.json`은 이 버전 이상의 `inodefence status`·`summary`로 읽는다([호환 약속](docs/USAGE.md#호환-약속)).
 
 ### 고친 문제

@@ -114,27 +114,69 @@ def test_a_missing_cli_is_the_tuis_own_failure(monkeypatch: pytest.MonkeyPatch) 
         launch.find_cli({"PATH": "/nonexistent"})
 
 
+#: Every standard way to start a process (QA: os.exec*, os.spawn*, posix_spawn, asyncio
+#: subprocesses and pty were missed): modules, and names that start a process wherever they live.
+_PROCESS_MODULES = {"subprocess", "pty", "multiprocessing"}
+_PROCESS_NAMES = {"Popen", "system", "popen", "fork", "forkpty", "posix_spawn", "posix_spawnp",
+                  "create_subprocess_exec", "create_subprocess_shell", "startfile"}  # fmt: skip
+
+
+def _starts_process_name(name: str) -> bool:
+    return name in _PROCESS_NAMES or name.startswith(("exec", "spawn"))
+
+
 def _starts_processes(path: Path) -> bool:
     tree = ast.parse(path.read_text(encoding="utf-8"))
     for node in ast.walk(tree):
-        if isinstance(node, ast.Import) and any(a.name == "subprocess" for a in node.names):
+        if isinstance(node, ast.Import) and any(
+            a.name.split(".")[0] in _PROCESS_MODULES for a in node.names
+        ):
             return True
-        if isinstance(node, ast.ImportFrom) and node.module == "subprocess":
-            return True
-        if isinstance(node, ast.Attribute) and node.attr in {"Popen", "system", "execv", "spawnv"}:
-            return True
+        if isinstance(node, ast.ImportFrom) and node.module:
+            if node.module.split(".")[0] in _PROCESS_MODULES:
+                return True
+            if node.module in ("os", "asyncio") and any(
+                _starts_process_name(a.name) for a in node.names
+            ):
+                return True
+        if isinstance(node, ast.Attribute) and _starts_process_name(node.attr):
+            base = node.value
+            if isinstance(base, ast.Name) and base.id in ("os", "asyncio", "pty", "subprocess"):
+                return True
+            if node.attr in _PROCESS_NAMES - {"system", "popen"}:  # Popen, fork, ... anywhere
+                return True
     return False
 
 
 def test_only_the_launch_module_starts_processes() -> None:
-    # The read model starts nothing; under ui/ only tui/launch.py (and its wrapper) does.
+    # The read model starts nothing; under ui/ only tui/launch.py (and its wrapper) does; in app/
+    # only doctor.py does (its read-only Docker queries, from before the TUI ran anything).
     starters = {
         str(p.relative_to(SRC))
-        for p in [*(SRC / "ui").rglob("*.py"), *(SRC / "app" / n for n in (
-            "runs.py", "events.py", "targets.py"))]
+        for p in [*(SRC / "ui").rglob("*.py"), *(SRC / "app").glob("*.py")]
         if _starts_processes(p)
-    }  # fmt: skip
-    assert starters == {"ui/tui/launch.py", "ui/tui/launch_wrapper.py"}
+    }
+    assert starters == {"ui/tui/launch.py", "ui/tui/launch_wrapper.py", "app/doctor.py"}
+
+
+@pytest.mark.parametrize(
+    "code",
+    ["import os\nos.execv('/bin/true', [])", "import os\nos.spawnv(0, 'x', [])",
+     "import os\nos.posix_spawn('x', [], {})", "from os import execvp",
+     "import asyncio\nasyncio.create_subprocess_exec('x')", "import pty\npty.spawn('x')",
+     "from asyncio import create_subprocess_shell", "import subprocess", "import os\nos.fork()",
+     "import os\nos.system('x')", "import os\nos.popen('x')"],
+)  # fmt: skip
+def test_the_boundary_check_sees_every_way_to_start_a_process(tmp_path: Path, code: str) -> None:
+    probe = tmp_path / "probe.py"
+    probe.write_text(code + "\n", encoding="utf-8")
+    assert _starts_processes(probe)
+
+
+def test_the_boundary_check_does_not_flag_reading(tmp_path: Path) -> None:
+    probe = tmp_path / "probe.py"
+    probe.write_text("import os\nos.stat('.')\nos.kill\nre = __import__('re')\n", encoding="utf-8")
+    assert not _starts_processes(probe)
 
 
 def test_a_plan_is_the_same_command_with_dry_run(
@@ -143,9 +185,9 @@ def test_a_plan_is_the_same_command_with_dry_run(
     monkeypatch.setenv("FAKE_EXIT", "0")
     argv = ["inodefence", "verify", "--version", "7.5.2"]
     code, output = launch.run_plan(argv, cwd=tmp_path, executable=fake["program"])
-    assert code == 0 and "fake inodefence verify --version 7.5.2 --dry-run" in output
+    assert code == 0 and "fake inodefence verify --dry-run --version 7.5.2" in output
     (seen,) = [json.loads(line) for line in fake["argv_log"].read_text().splitlines()]
-    assert seen == [*argv[1:], "--dry-run"]
+    assert seen == ["verify", "--dry-run", "--version", "7.5.2"]  # before any positional
     launch.run_plan([*argv, "--dry-run"], cwd=tmp_path, executable=fake["program"])
     last = json.loads(fake["argv_log"].read_text().splitlines()[-1])
     assert last.count("--dry-run") == 1  # never added twice
@@ -189,3 +231,49 @@ def test_the_state_says_running_ended_or_the_code_and_its_meaning(
     assert launch.state_text(done) == "exit 1 · FAIL (a violation was judged)"
     gone = launch.Launch(done.folder, done.argv, done.cwd, done.started_at, None, None, 2**22 + 7)
     assert launch.state_text(gone) == "ended (no exit code recorded)"
+
+
+def test_a_plan_is_a_dry_run_whatever_the_case_folder_is_called(
+    fake: dict[str, Path], tmp_path: Path
+) -> None:
+    # QA: a replay case folder named "--" turned an appended --dry-run into a positional
+    from inodefence.cli import build_parser
+    from inodefence.ui.tui.forms import command_forms, command_line
+
+    for folder in ("--", "-x", "--dry-run", "run-000001"):
+        argv = command_line(command_forms()["replay"], {"case_dir": folder, "rounds": "5"})
+        args, _ = build_parser().parse_known_args(argv[1:])
+        assert args.case_dir == Path(folder) and args.dry_run is False  # typed as given
+        launch.run_plan(argv, cwd=tmp_path, executable=fake["program"])
+        planned = json.loads(fake["argv_log"].read_text().splitlines()[-1])
+        args, _ = build_parser().parse_known_args(planned)
+        assert args.dry_run is True and args.case_dir == Path(folder)
+    with pytest.raises(ValueError):  # "--dry-run" as a value is not a plan
+        launch.run_waited(["inodefence", "replay", "--", "--dry-run"], cwd=tmp_path,
+                          executable=fake["program"])  # fmt: skip
+
+
+def test_records_are_readable_by_their_owner_only(fake: dict[str, Path], tmp_path: Path) -> None:
+    import stat
+
+    done = launch.wait(_start(fake, ["inodefence", "doctor"], tmp_path), timeout=20)
+    for path, mode in ((fake["records"], 0o700), (done.folder, 0o700),
+                       (done.folder / launch.RECORD_FILE, 0o600),
+                       (done.folder / launch.OUTPUT_FILE, 0o600)):  # fmt: skip
+        assert stat.S_IMODE(path.stat().st_mode) == mode, path
+
+
+def test_ended_launches_are_reaped_so_no_zombie_stays(
+    fake: dict[str, Path], tmp_path: Path
+) -> None:
+    started = [_start(fake, ["inodefence", "doctor"], tmp_path) for _ in range(3)]
+    for item in started:
+        launch.wait(item, timeout=20)
+    deadline = time.monotonic() + 10
+    while launch._STARTED and time.monotonic() < deadline:
+        launch.reap()
+        time.sleep(0.05)
+    assert launch._STARTED == []
+    for item in started:  # each wrapper's exit was collected: nothing left to wait for
+        with pytest.raises(ChildProcessError):
+            os.waitpid(item.pid or -1, os.WNOHANG)

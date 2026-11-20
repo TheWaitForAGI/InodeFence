@@ -148,9 +148,9 @@ async def test_the_plan_is_the_dry_run_and_starts_nothing(setup) -> None:
             assert time.monotonic() < deadline
             await pilot.pause(0.05)
         body = str(app.screen.query_one("#confirm-plan-body", Static).content)
-        assert "fake inodefence verify --version 7.5.2 --dry-run" in body
+        assert "fake inodefence verify --dry-run --version 7.5.2" in body
         assert app.launches == []
-    assert _seen(setup["argv_log"]) == [["verify", "--version", "7.5.2", "--dry-run"]]
+    assert _seen(setup["argv_log"]) == [["verify", "--dry-run", "--version", "7.5.2"]]
 
 
 @_sync

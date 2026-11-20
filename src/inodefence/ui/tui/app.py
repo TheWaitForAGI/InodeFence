@@ -423,6 +423,15 @@ class InodeFenceTui(App[None]):
         for key, snapshot in self.state.snapshots.items():
             model.observe(self.history.setdefault(key, []), snapshot)
         self.state.listings = discover_runs(self.roots, max_entries=2000)
+        # The follower keeps every run it ever read; a run seen only through its launcher log is
+        # replaced by its own folder once it writes one (a new key). Keep it only while the scan
+        # still lists it, so one run is never shown twice (QA, #553).
+        listed = {item.ref.key for item in self.state.listings if item.ref is not None}
+        self.state.snapshots = {
+            key: snap for key, snap in self.state.snapshots.items()
+            if snap.launcher_state is None or key in listed
+        }  # fmt: skip
+        launch.reap()  # collect commands this screen started that have ended (no zombies)
         self.state.now = self._clock()
         self.redraw()
 

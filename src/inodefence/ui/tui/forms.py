@@ -211,4 +211,6 @@ def command_line(
         # a form's text box gives "20" for the default 20: unchanged is unchanged, typed or not
         elif value not in (None, "") and (f.required or str(value) != str(f.default)):
             argv += [flag, str(value)]
+    if any(p.startswith("-") for p in positionals):  # a value the parser would take as an option
+        return [*argv, "--", *positionals]
     return argv[:2] + positionals + argv[2:]  # positionals first, as the CLI's help shows them

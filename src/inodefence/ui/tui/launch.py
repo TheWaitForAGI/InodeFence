@@ -98,11 +98,34 @@ def _now() -> str:
     return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+#: Records hold command lines, paths and output: readable by their owner only.
+FOLDER_MODE, FILE_MODE = 0o700, 0o600
+
+
+def _private_file(path: Path) -> int:
+    return os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, FILE_MODE)
+
+
 def write_record(folder: Path, record: Mapping[str, Any]) -> None:
-    """Replace ``launch.json`` in one step (a reader never sees half a file)."""
+    """Replace ``launch.json`` in one step (a reader never sees half a file); owner-only."""
     tmp = folder / f".{RECORD_FILE}.{os.getpid()}.tmp"
-    tmp.write_text(json.dumps(dict(record), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    text = json.dumps(dict(record), indent=2, sort_keys=True) + "\n"
+    with os.fdopen(_private_file(tmp), "w", encoding="utf-8") as handle:
+        handle.write(text)
     os.replace(tmp, folder / RECORD_FILE)
+
+
+#: Launches started by this process whose exit has not been collected yet (no zombies are left
+#: while the TUI stays open: :func:`reap` collects the finished ones on every refresh).
+_STARTED: list[subprocess.Popen[bytes]] = []
+
+
+def reap() -> int:
+    """Collect the exit of every finished launch this process started; returns how many."""
+    finished = [process for process in _STARTED if process.poll() is not None]
+    for process in finished:
+        _STARTED.remove(process)
+    return len(finished)
 
 
 def start(
@@ -119,18 +142,23 @@ def start(
     if not argv or argv[0] != CLI_NAME:
         raise ValueError(f"only `{CLI_NAME} ...` commands are started, got {list(argv)!r}")
     program = executable if executable is not None else find_cli()
-    folder = (root or records_root()) / f"{datetime.now(UTC):%Y%m%dT%H%M%SZ}-{uuid.uuid4().hex[:8]}"
-    folder.mkdir(parents=True, exist_ok=False)
+    reap()
+    base = root or records_root()
+    base.mkdir(parents=True, exist_ok=True, mode=FOLDER_MODE)
+    base.chmod(FOLDER_MODE)
+    folder = base / f"{datetime.now(UTC):%Y%m%dT%H%M%SZ}-{uuid.uuid4().hex[:8]}"
+    folder.mkdir(mode=FOLDER_MODE, exist_ok=False)
     record = {"schema": SCHEMA, "argv": list(argv), "program": str(program), "cwd": str(cwd),
               "started_at": _now(), "ended_at": None, "exit_code": None, "pid": None}  # fmt: skip
     write_record(folder, record)
-    with open(folder / OUTPUT_FILE, "wb") as output:
+    with os.fdopen(_private_file(folder / OUTPUT_FILE), "wb") as output:
         process = subprocess.Popen(  # noqa: S603 -- argv is the CLI's own, built from its parser
             [sys.executable, "-m", "inodefence.ui.tui.launch_wrapper", str(folder), "--",
              str(program), *argv[1:]],
             cwd=cwd, stdin=subprocess.DEVNULL, stdout=output, stderr=subprocess.STDOUT,
             start_new_session=True, close_fds=True,
         )  # fmt: skip
+    _STARTED.append(process)
     return Launch(folder, tuple(argv), str(cwd), record["started_at"], None, None, process.pid)
 
 
@@ -158,6 +186,7 @@ def read_launch(folder: Path) -> Launch:
 
 def list_launches(root: Path | None = None, limit: int = 50) -> list[Launch]:
     """The newest ``limit`` records, newest first (folder names start with the UTC start time)."""
+    reap()
     base = root or records_root()
     try:
         folders = sorted((p for p in base.iterdir() if p.is_dir()), reverse=True)
@@ -197,6 +226,17 @@ PLAN_TIMEOUT_SECONDS = 60.0
 WAITED_COMMANDS = frozenset({"doctor", "targets", "status", "summary", "compare"})
 
 
+def is_dry_run(argv: Sequence[str]) -> bool:
+    """Whether the CLI's own parser reads ``argv`` as a ``--dry-run`` (never a string search)."""
+    from inodefence.cli import build_parser
+
+    try:
+        args, _ = build_parser().parse_known_args(list(argv[1:]))
+    except SystemExit:  # the parser refused it: not a plan
+        return False
+    return getattr(args, "dry_run", False) is True
+
+
 def run_waited(
     argv: Sequence[str],
     *,
@@ -209,7 +249,7 @@ def run_waited(
     (:func:`run_plan`) or one of :data:`WAITED_COMMANDS`."""
     if not argv or argv[0] != CLI_NAME:
         raise ValueError(f"only `{CLI_NAME} ...` commands are run, got {list(argv)!r}")
-    if "--dry-run" not in argv and (len(argv) < 2 or argv[1] not in WAITED_COMMANDS):
+    if not is_dry_run(argv) and (len(argv) < 2 or argv[1] not in WAITED_COMMANDS):
         raise ValueError(f"{list(argv)!r} may start Docker: it is started detached, not waited for")
     program = executable if executable is not None else find_cli()
     try:
@@ -238,7 +278,9 @@ def run_plan(
     """
     if not argv or argv[0] != CLI_NAME:
         raise ValueError(f"only `{CLI_NAME} ...` commands are planned, got {list(argv)!r}")
-    planned = [*argv] + ([] if "--dry-run" in argv else ["--dry-run"])
+    # right after the sub-command: before any positional and before a "--" (QA: a case folder
+    # named "--" turned an appended --dry-run into a positional)
+    planned = list(argv) if is_dry_run(argv) else [*argv[:2], "--dry-run", *argv[2:]]
     code, output = run_waited(planned, cwd=cwd, executable=executable, timeout=timeout)
     if code is None:
         output = output.replace("(no answer after", "(no plan after")

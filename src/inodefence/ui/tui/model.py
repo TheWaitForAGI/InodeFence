@@ -350,7 +350,7 @@ def progress_bar(runs: int | None, budget: int | None, width: int = BAR_WIDTH) -
 
 EMPTY_TITLE = "no run folders found"
 EMPTY_HINT = (
-    "make a run: press n, or inodefence explore --target node-tar --version 7.5.2 --auto-prepare"
+    "make a run: press n, or inodefence explore --target node-tar --version latest --auto-prepare"
 )
 
 

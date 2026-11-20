@@ -34,7 +34,7 @@ from textual.widgets import (
 )
 from textual.widgets.option_list import Option
 
-from inodefence.target_result import LABEL
+from inodefence.target_result import EXPLORATORY_LABEL, LABEL
 from inodefence.ui.tui import launch as launch_records
 from inodefence.ui.tui.forms import CommandForm, Field, FieldKind, command_line, missing_required
 from inodefence.ui.tui.palette import PALETTE, TITLE
@@ -42,8 +42,11 @@ from inodefence.ui.tui.palette import PALETTE, TITLE
 #: Above this budget the confirmation asks once more (a warning; the cap itself is the CLI's).
 BUDGET_RECONFIRM = 2000
 #: One line on every confirmation of a run: what kind of record it makes, in the result's own words.
+#: The CLI decides the label when it runs (a version without a fixed lock is exploratory), so both
+#: are named, from the constants the result writer uses.
 PRODUCT_RUN = (
-    f'product run: its result is labelled "{LABEL}" (not a qualification or experiment result)'
+    f'product run: its result is labelled "{LABEL}" (or "{EXPLORATORY_LABEL}" for a version '
+    "without a fixed lock) -- not a qualification or experiment result"
 )
 
 
@@ -237,6 +240,10 @@ class CommandFormScreen(ModalScreen[tuple[list[str], dict[str, Any]] | None]):
         else:
             shown = ", ".join(map(str, value)) if isinstance(value, list | tuple) else value
             hint = "comma-separated" if field.kind is FieldKind.REPEAT else field.help
+            if field.dest == "version":  # the product works on the current release (Jiwoong)
+                hint = "latest, or an exact version" + (
+                    " (comma-separated)" if field.kind is FieldKind.REPEAT else ""
+                )
             widget = Input(value="" if shown in (None, "") else str(shown), placeholder=hint,
                            id=_widget_id(field), compact=True)  # fmt: skip
         return Horizontal(Label(label + scope, classes="field-label"), widget, classes="field")

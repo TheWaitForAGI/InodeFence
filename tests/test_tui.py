@@ -488,3 +488,24 @@ async def test_the_narrow_run_list_says_how_many_runs_do_not_fit(tmp_path: Path)
         await pilot.pause()
         subtitle = app.query_one("#p-runs").border_subtitle or ""
         assert subtitle.startswith("+") and subtitle.endswith("more (↑ ↓)")
+
+
+def test_an_unclassified_violation_is_its_own_row_not_a_candidate(tmp_path: Path) -> None:
+    from inodefence.app.runs import RunSnapshot, read_result
+
+    path = tmp_path / "cell" / "result.json"
+    cases = [syn.case("toplevel_hardlink", True, termination=None)]
+    syn.write_result(path.parent, syn.result(mode=syn.ResultMode.FIXTURE_REGRESSION, cases=cases))
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["mode"] = 7  # broken, and no run kind below: unknown
+    path.write_text(json.dumps(data), encoding="utf-8")
+    summary = read_result(path)
+    ref = RunRef(RunKind.VERIFY, path.parent, "cell")
+    snapshot = RunSnapshot(ref, 0.0, summary=summary,
+                           unclassified_violations=summary.unclassified_violations)  # fmt: skip
+    state = model.DashboardState(snapshots={ref.key: snapshot})
+    rows = {r.key: r.cells[1].text for r in model.overview_rows(state)}
+    assert rows["unclassified (result not validated)"] == "1"
+    assert rows["violation candidates"] == "0"
+    assert rows["known fixtures violated (verify)"] == "0"
+    model.verify_rows(state)  # renders without raising

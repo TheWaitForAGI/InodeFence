@@ -145,14 +145,40 @@ def test_half_written_result_is_not_ready_not_an_error(tmp_path: Path) -> None:
     assert runs.read_result(foreign).read_state is ReadState.UNREADABLE
 
 
-def test_newer_campaign_keys_are_read_either_way(tmp_path: Path) -> None:
+def test_fields_the_strict_reader_knows_are_read_as_fields_not_extras(tmp_path: Path) -> None:
+    # Since #535 the reader knows campaign.mutation_policy and campaign.identity_checks; valid
+    # values are ordinary fields (validated, no extras).
+    from inodefence.mutator import MutationPolicy
+    from inodefence.target_result import FAST_ACCEPTANCE_NOT_MEASURED, per_case_identity_marker
+
     data = syn.result(cases=[syn.case("step-1", False)]).to_json_dict()
-    data["campaign"]["mutation_policy"] = "x"
-    data["campaign"]["identity_checks"] = {"interval": 1}
-    summary = runs.read_result(syn.write_result(tmp_path / "n", syn.result(),
+    data["campaign"]["mutation_policy"] = MutationPolicy.V2_FREEZE3_FIXED_BASELINE.value
+    data["campaign"]["identity_checks"] = per_case_identity_marker(
+        "decompress", FAST_ACCEPTANCE_NOT_MEASURED
+    )
+    summary = runs.read_result(syn.write_result(tmp_path / "k", syn.result(),
                                                 text=json.dumps(data)))  # fmt: skip
     assert summary.read_state is ReadState.OK and summary.validated
-    assert summary.extras == {"mutation_policy": "x", "identity_checks": {"interval": 1}}
+    assert summary.extras == {}
+
+
+def test_a_key_the_strict_reader_does_not_know_is_kept_in_extras(tmp_path: Path) -> None:
+    data = syn.result(cases=[syn.case("step-1", False)]).to_json_dict()
+    data["campaign"]["future_key"] = {"from": "a newer version"}
+    summary = runs.read_result(syn.write_result(tmp_path / "f", syn.result(),
+                                                text=json.dumps(data)))  # fmt: skip
+    assert summary.read_state is ReadState.OK and summary.validated
+    assert summary.extras == {"future_key": {"from": "a newer version"}}
+
+
+def test_an_invalid_known_record_or_derived_field_is_unvalidated(tmp_path: Path) -> None:
+    data = syn.result(cases=[syn.case("step-1", False)]).to_json_dict()
+    data["campaign"]["identity_checks"] = {"interval": 1}  # no total_checks, not a D065 marker
+    bad = runs.read_result(syn.write_result(tmp_path / "b", syn.result(),
+                                            text=json.dumps(data)))  # fmt: skip
+    assert bad.read_state is ReadState.UNVALIDATED and not bad.validated
+    assert bad.error and "identity_checks" in bad.error  # the reader's own reason
+    del data["campaign"]["identity_checks"]
     data["runs"]["executed"] = 99  # a derived field the strict reader refuses
     refused = runs.read_result(syn.write_result(tmp_path / "m", syn.result(),
                                                 text=json.dumps(data)))  # fmt: skip
@@ -406,3 +432,31 @@ def test_a_summary_carries_the_result_files_mtime(tmp_path: Path) -> None:
     linked.mkdir()
     os.symlink(path, linked / "result.json")
     assert runs.read_result(linked / "result.json").result_mtime is None  # a link is not followed
+
+
+def test_the_535_fields_read_ok(tmp_path: Path) -> None:
+    # #535 shapes, built with main's own constants: a node-tar interval record with its scope
+    # label, and a replay whose rounds carry additive-detector columns.
+    from tests.test_fast_identity_driver import RECORD
+
+    from inodefence.target_result import FAST_ACCEPTANCE_PASSED, NODE_TAR_ACCEPTED_FAST_SCOPE
+
+    data = syn.result(cases=[syn.case("step-1", False)]).to_json_dict()
+    data["campaign"]["identity_checks"] = {
+        **RECORD,
+        "fast_acceptance": FAST_ACCEPTANCE_PASSED,
+        "acceptance_scope": NODE_TAR_ACCEPTED_FAST_SCOPE,
+    }
+    summary = runs.read_result(syn.write_result(tmp_path / "s", syn.result(),
+                                                text=json.dumps(data)))  # fmt: skip
+    assert summary.read_state is ReadState.OK and summary.validated and summary.extras == {}
+    case_dir = tmp_path / "violations" / "run-000001"
+    case_dir.mkdir(parents=True)
+    path = syn.replay(case_dir, {"c0": False, "c1": True, "c2": False}, [syn.judged_round(True)])
+    record = json.loads(path.read_text(encoding="utf-8"))
+    record["rounds"][0]["additive_detectors"] = {"family": "additive-detectors-v1 (record-only)"}
+    record["summary"]["fingerprints_comparable"] = False
+    record["summary"]["same_fingerprints"] = None
+    path.write_text(json.dumps(record), encoding="utf-8")
+    replay = runs.read_replay(path)
+    assert replay.read_state is ReadState.OK and replay.same_fingerprints is None  # not 0

@@ -219,6 +219,7 @@ def test_identity_container_and_target_container_are_told_apart(
     archive.write_bytes(b"")
     fake_target = SimpleNamespace(
         _verify_identity=lambda: None,
+        identity_schedule=None,  # STRICT (#536): probe before every case
         command=lambda _archive, _root: ("run",),
         image_id=IMAGE,
         timeout_seconds=10.0,

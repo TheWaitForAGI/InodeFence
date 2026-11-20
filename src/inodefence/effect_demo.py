@@ -12,12 +12,14 @@ from enum import StrEnum
 from typing import Any
 
 from inodefence.builder import BUILDER_FORMAT
+from inodefence.campaign import CampaignOrigin
 from inodefence.effect_campaign import (
     BuildInvalidStep,
     EffectCampaignResult,
     EffectCampaignStep,
     _observed_name_segments,
 )
+from inodefence.effect_scheduler import PreViolationSchedulerEvidence
 from inodefence.effect_synthetic import SYNTHETIC_MECHANISM
 from inodefence.feedback import violation_fingerprints
 from inodefence.generator import seed_corpus_label
@@ -451,9 +453,13 @@ class EffectStepReporter:
     each record before the next target run, so an abort keeps the finished ones.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, *, exploration: bool = False) -> None:
+        # exploration: the campaign ran an exploration policy (#511); the parent pool is then the
+        # seeds plus the children the policy admitted (``exploration.signal_retained``), not the
+        # recorded S-u channel's ``feedback.retained``.
         self._corpus: list[str] = []
         self._next_index = 0
+        self._exploration = exploration
 
     def add(self, step: EffectCampaignStep | BuildInvalidStep) -> dict[str, object]:
         if not isinstance(step, (EffectCampaignStep, BuildInvalidStep)):
@@ -468,7 +474,21 @@ class EffectStepReporter:
         else:
             record = _step_report(step)
             record["selection"] = _selection_report(record, self._corpus)
-            if step.feedback.retained:
+            if self._exploration:
+                evidence = step.scheduler_evidence
+                admitted = (
+                    evidence.signal_retained
+                    if isinstance(evidence, PreViolationSchedulerEvidence)
+                    else step.origin == CampaignOrigin.SEED
+                )
+                selection = record["selection"]
+                if isinstance(selection, dict):
+                    admission = selection["corpus_admission"]
+                    assert isinstance(admission, dict)
+                    admission["retained"] = admitted
+                if admitted:
+                    self._corpus.append(step.result.base_result.case.case_id)
+            elif step.feedback.retained:
                 self._corpus.append(step.result.base_result.case.case_id)
         _add_v2_keys(record, step)
         self._next_index += 1
@@ -488,6 +508,24 @@ def _add_v2_keys(record: dict[str, object], step: EffectCampaignStep | BuildInva
     else:
         case = step.result.base_result.case
     record["input_structure"] = class_record(case)
+    evidence = step.scheduler_evidence
+    if isinstance(evidence, PreViolationSchedulerEvidence):
+        record["exploration"] = {
+            "new_signals": [
+                {
+                    "kind": signal.kind,
+                    "entry_type": signal.entry_type,
+                    "operation": signal.operation,
+                    "region": signal.region,
+                    "outcome": signal.outcome,
+                    "shape": signal.shape,
+                }
+                for signal in evidence.new_signals
+            ],
+            "signal_retained": evidence.signal_retained,
+            "credited_operators": [operator.value for operator in evidence.credited_operators],
+            "weight_unit": evidence.weight_unit,
+        }
     attempt = step.mutation_attempt
     if isinstance(attempt, ChainedMutationAttempt):
         mutation = record["mutation_attempt"]
@@ -517,7 +555,7 @@ def effect_campaign_report(result: EffectCampaignResult, producer: str) -> dict[
     if not isinstance(producer, str) or not producer:
         raise ValueError("demo report requires a producer label")
     config = result.config
-    reporter = EffectStepReporter()
+    reporter = EffectStepReporter(exploration=config.exploration_policy is not None)
     ordered = sorted((*result.steps, *result.build_invalid_steps), key=lambda step: step.index)
     steps = [reporter.add(step) for step in ordered]
     return {
@@ -534,6 +572,12 @@ def effect_campaign_report(result: EffectCampaignResult, producer: str) -> dict[
             "builder_format": BUILDER_FORMAT,
             # Additive (schema 5, v2.1): the named corpus whose IDs equal initial_case_ids.
             "seed_corpus": seed_corpus_label(result.initial_case_ids),
+            # Additive (#511): only when an exploration policy ran, so other reports are unchanged.
+            **(
+                {"exploration_policy": config.exploration_policy.value}
+                if config.exploration_policy is not None
+                else {}
+            ),
         },
         "initial_case_ids": list(result.initial_case_ids),
         "steps": steps,
@@ -634,6 +678,21 @@ def render_effect_step_summary(record: Mapping[str, Any], budget: int | None = N
     return "  ".join(parts)
 
 
+def _case_records_view(report: Mapping[str, Any]) -> dict[str, Any]:
+    """A streaming report that lists every case's verdict record, seen as the aggregate block."""
+    records = [r for r in report["case_records"] if isinstance(r, Mapping)]
+    return {
+        **report,
+        "aggregate": {
+            "runs_executed": len(records),
+            "terminations": dict(Counter(str(r.get("termination")) for r in records)),
+            "unjudged_steps": sum(1 for r in records if r.get("outcome") == "run_error"),
+            "errors": sum(1 for r in records if r.get("outcome") == "run_error"),
+        },
+        "violation_cases": [r for r in records if r.get("c0") or r.get("c1") or r.get("c2")],
+    }
+
+
 def _render_streaming_campaign_summary(report: Mapping[str, Any]) -> str:
     """Closing lines for a streaming report, which keeps no steps.
 
@@ -682,6 +741,9 @@ def render_effect_campaign_summary(report: Mapping[str, Any]) -> str:
     if not isinstance(steps, list):
         if report.get("streaming") and isinstance(report.get("aggregate"), dict):
             return _render_streaming_campaign_summary(report)
+        if report.get("streaming") and isinstance(report.get("case_records"), list):
+            # python-tarfile streaming (#542): no steps, one verdict record per case instead.
+            return _render_streaming_campaign_summary(_case_records_view(report))
         raise ValueError("campaign summary requires a finished report with steps")
     terminations = Counter(str(step["feedback"]["trace_termination"]) for step in steps)
     contracts = sorted({contract for step in steps for contract in step["oracle"]})

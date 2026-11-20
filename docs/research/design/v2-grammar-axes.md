@@ -99,10 +99,10 @@ W4 문구:
   - 엔진 fd25d6f, 고정 입력 점검이며 arm 실행이 아니다. 실행 전에 원장 줄을 적었다.
   - 관찰한 node-tar 버전은 7.5.23 하나다. 다른 버전의 동작은 확인하지 않았다.
 - 대상 한계:
-  - python-tarfile 3.12.16(`data`)에서는 빈 아카이브 실행의 기록이 무효다(validity invalid, `observer_integrity`).
+  - python-tarfile 3.12.16(`data`)에서는 빈 아카이브 실행의 기록이 무효다(validity invalid, `observer_integrity`). (수정 전 기록)
   - 원인은 worker가 아니라 호스트 판독기다(이슈 #533). `targets/python_tarfile_effect.py`의 완결 판정이 "참조가 하나 이상"을 요구해서, entry 0개의 정상 종료를 미완결로 판정한다.
-  - 판독기 수정은 제품 판정을 바꾸므로 W4 검토 뒤 별도 단위로 한다.
-  - 고치기 전에는 node-tar가 아닌 대상에서 `minimal-empty-reg-v1`을 쓰지 않는다. 이 정책은 python-tarfile, decompress, oras-go 루프가 설정 단계에서 거부한다.
+  - 판독기는 9bbb09eb(#533)에서 고쳤다. worker가 항목 0개(members 0)를 보고한 정상 종료는 완결로 판정한다. 이 수정은 앞으로의 실행에만 적용하고, 이미 기록된 실행을 다시 판정하지 않는다.
+  - python-tarfile 루프는 `minimal-empty-reg-v1`에 묶인 정책(v2.1, 비등록 코퍼스)을 설정 단계에서 거부한다. 사유는 승인된 탐색 계획이 없다는 것이다(#533 사유는 해소). 계획이 승인되면 그 계획에서 다시 정한다.
 - 그 밖의 루프:
   - decompress와 oras-go 루프는 v2 문법 정책(두 id 모두)을 설정 단계에서 거부한다. 이 루프들은 V1 표 스케줄러를 쓰고 코퍼스를 치환하지 않는다.
   - python-tarfile 루프는 v2(등록 코퍼스) 정책을 지금처럼 받는다.

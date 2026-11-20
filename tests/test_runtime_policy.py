@@ -77,7 +77,10 @@ def test_strict_is_the_default_profile_and_has_no_flags() -> None:
     # a profile is added only with a measured flag: FAST has exactly one (tests/test_runtime_fast)
     assert [p.value for p in policy.RuntimeProfile] == ["strict", "fast"]
     assert policy.STRICT.flags() == {} and RuntimeSession(target="x").policy is policy.STRICT
-    assert policy.FAST.flags() == {"reuse_shared_images": True}
+    assert policy.FAST.flags() == {
+        "reuse_shared_images": True,
+        "identity_check_every": 200,
+    }  # #536 option 1 adds the interval
     assert policy.PROFILES == {"strict": policy.STRICT, "fast": policy.FAST}
 
 

@@ -104,7 +104,9 @@ table.runs tr.muted td { color: var(--if-muted); }
 
 /* rank list */
 .rank-list { display: flex; flex-direction: column; gap: 2px; }
-.rank-item { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; font-size: 13px; padding: 7px 0; border-bottom: 1px solid var(--faint-2); }
+/* name keeps a floor (never crushed to one character); the marks column can shrink so its chips
+   wrap to the next line instead of squeezing the name. */
+.rank-item { display: grid; grid-template-columns: minmax(8rem, 1fr) minmax(0, auto); gap: 8px; align-items: center; font-size: 13px; padding: 7px 0; border-bottom: 1px solid var(--faint-2); }
 .rank-item:last-child { border-bottom: none; }
 .rank-item .meta { color: var(--if-muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .row-flex.wrap { flex-wrap: wrap; justify-content: flex-end; }

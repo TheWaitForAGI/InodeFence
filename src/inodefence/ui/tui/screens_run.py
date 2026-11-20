@@ -20,11 +20,21 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
-from textual.widgets import Button, Checkbox, Input, Label, OptionList, Select, Static
+from textual.widgets import (
+    Button,
+    Checkbox,
+    Collapsible,
+    Input,
+    Label,
+    OptionList,
+    Select,
+    Static,
+)
 from textual.widgets.option_list import Option
 
 from inodefence.target_result import LABEL
 from inodefence.ui.tui.forms import CommandForm, Field, FieldKind, command_line, missing_required
+from inodefence.ui.tui.palette import PALETTE, TITLE
 
 #: Above this budget the confirmation asks once more (a warning; the cap itself is the CLI's).
 BUDGET_RECONFIRM = 2000
@@ -81,11 +91,50 @@ def confirm_notes(
     return notes
 
 
+# -- the command line, wrapped where a person would wrap it --------------------------------------
+
+
+def command_units(argv: Sequence[str]) -> list[str]:
+    """``argv`` as shell-quoted units: an option with its value is one unit, never split."""
+    units: list[str] = []
+    index = 0
+    while index < len(argv):
+        token = argv[index]
+        if (
+            token.startswith("-")
+            and index + 1 < len(argv)
+            and not argv[index + 1].startswith("-")
+            and index >= 2  # "inodefence <command>" stay apart
+        ):
+            units.append(f"{shlex.quote(token)} {shlex.quote(argv[index + 1])}")
+            index += 2
+        else:
+            units.append(shlex.quote(token))
+            index += 1
+    return units
+
+
+def wrapped_command(argv: Sequence[str], width: int) -> str:
+    """The command line in lines of at most ``width``, broken only between options, each continued
+    line ending in `` \\`` and the next indented -- still pastes into a shell as it is."""
+    lines: list[str] = []
+    current = ""
+    for unit in command_units(argv):
+        candidate = f"{current} {unit}" if current else unit
+        if current and len(candidate) + 2 > width:
+            lines.append(current + " \\")
+            current = "  " + unit
+        else:
+            current = candidate
+    lines.append(current)
+    return "\n".join(lines)
+
+
 # -- pick a command ------------------------------------------------------------------------------
 
 
 class CommandPicker(ModalScreen[str | None]):
-    """The CLI's sub-commands with their own help line."""
+    """The CLI's sub-commands with their own help line: the three that start Docker first."""
 
     BINDINGS = [Binding("escape", "dismiss(None)", "cancel")]
 
@@ -93,18 +142,26 @@ class CommandPicker(ModalScreen[str | None]):
         super().__init__()
         self._forms = forms
 
+    def _option(self, name: str, form: CommandForm) -> Option:
+        line = Text(f"{name:<9}", style=f"bold {TITLE}")
+        # the kind in a fixed column right after the name, so the two groups read at a glance
+        if form.starts_docker:
+            line.append(f"{'starts Docker':<15}", style=PALETTE["warn"])
+        else:
+            line.append(f"{'reads only':<15}", style=PALETTE["muted"])
+        line.append(form.help)  # Text: a help line is never read as markup
+        return Option(line, id=name)
+
     def compose(self) -> ComposeResult:
+        docker = [n for n, f in self._forms.items() if f.starts_docker]
+        reading = [n for n, f in self._forms.items() if not f.starts_docker]
+        options: list[Option | None] = [self._option(n, self._forms[n]) for n in docker]
+        options.append(None)  # a separator between the two groups
+        options += [self._option(n, self._forms[n]) for n in reading]
         with Vertical(id="picker", classes="run-box") as box:
             box.border_title = "run a command"
             box.border_subtitle = "enter: choose · esc: cancel"
-            yield OptionList(
-                *(
-                    Option(Text(f"{name:<9} {form.help}"  # Text: a help line is never markup
-                                + ("  · starts Docker" if form.starts_docker else "")), id=name)
-                    for name, form in self._forms.items()
-                ),
-                id="picker-list",
-            )  # fmt: skip
+            yield OptionList(*options, id="picker-list")
 
     def on_option_list_option_selected(self, message: OptionList.OptionSelected) -> None:
         self.dismiss(message.option.id)
@@ -112,9 +169,23 @@ class CommandPicker(ModalScreen[str | None]):
 
 # -- fill the form -------------------------------------------------------------------------------
 
+#: Shown above "more options", in this order when the command has them (the rest go below).
+COMMON = ("target", "version", "budget", "seed", "auto_prepare", "case_dir", "case", "rounds",
+          "folder", "result", "a", "b")  # fmt: skip
+
 
 def _widget_id(field: Field) -> str:
     return f"field-{field.dest}"
+
+
+def ordered_fields(form: CommandForm) -> tuple[list[Field], list[Field]]:
+    """``(main, more)``: required fields, then :data:`COMMON` ones, then target-only ones in the
+    main group; every other field under "more options"."""
+    rank = {dest: index for index, dest in enumerate(COMMON)}
+    main = [f for f in form.fields if f.required or f.dest in rank or f.target is not None]
+    main.sort(key=lambda f: (0 if f.required and f.target is None else 1, rank.get(f.dest, 99)))
+    more = [f for f in form.fields if f not in main]
+    return main, more
 
 
 class CommandFormScreen(ModalScreen[tuple[list[str], dict[str, Any]] | None]):
@@ -133,6 +204,7 @@ class CommandFormScreen(ModalScreen[tuple[list[str], dict[str, Any]] | None]):
         self.form = form
         self._targets = list(targets)
         self._preset = dict(preset or {})
+        self._help = {_widget_id(f): f.help for f in form.fields}
 
     def _target(self) -> str | None:
         try:
@@ -142,63 +214,63 @@ class CommandFormScreen(ModalScreen[tuple[list[str], dict[str, Any]] | None]):
         value = widget.value
         return value if isinstance(value, str) else None
 
-    def _input(self, field: Field) -> Any:
+    def _row(self, field: Field) -> Horizontal:
         value = self._preset.get(field.dest, field.default)
-        label = field.flag or field.dest
-        mark = " *" if field.required else ""
-        scope = f"  ({field.target} only)" if field.target else ""
-        if field.kind is FieldKind.FLAG:
-            return Checkbox(f"{label}{scope}", value=bool(value), id=_widget_id(field),
-                            tooltip=field.help)  # fmt: skip
+        label = (field.flag or field.dest) + (" *" if field.required else "")
+        scope = f" ({field.target})" if field.target else ""
+        widget: Any
         choices = field.choices
         if field.dest == "target" and not choices and self._targets:
             choices = tuple(self._targets)
-        if choices:
-            options = [(c, c) for c in choices]
+        if field.kind is FieldKind.FLAG:
+            widget = Checkbox("", value=bool(value), id=_widget_id(field))
+        elif choices:
             current = value if value in choices else Select.NULL
-            blank = not field.required or current is Select.NULL
-            return Vertical(
-                Label(f"{label}{mark}{scope}", classes="field-label"),
-                Select(options, value=current, allow_blank=blank, id=_widget_id(field),
-                       tooltip=field.help),
-                classes="field",
-            )  # fmt: skip
-        shown = ", ".join(map(str, value)) if isinstance(value, list | tuple) else value
-        hint = "comma-separated" if field.kind is FieldKind.REPEAT else field.help
-        return Vertical(
-            Label(f"{label}{mark}{scope}", classes="field-label"),
-            Input(value="" if shown in (None, "") else str(shown), placeholder=hint[:80],
-                  id=_widget_id(field), tooltip=field.help),
-            classes="field",
-        )  # fmt: skip
+            widget = Select([(c, c) for c in choices], value=current,
+                            allow_blank=not field.required or current is Select.NULL,
+                            id=_widget_id(field), compact=True)  # fmt: skip
+        else:
+            shown = ", ".join(map(str, value)) if isinstance(value, list | tuple) else value
+            hint = "comma-separated" if field.kind is FieldKind.REPEAT else field.help
+            widget = Input(value="" if shown in (None, "") else str(shown), placeholder=hint,
+                           id=_widget_id(field), compact=True)  # fmt: skip
+        return Horizontal(Label(label + scope, classes="field-label"), widget, classes="field")
 
     def compose(self) -> ComposeResult:
+        main, more = ordered_fields(self.form)
         with Vertical(id="form", classes="run-box") as box:
             box.border_title = f"inodefence {self.form.name}"
-            box.border_subtitle = "* required · the CLI checks every value · esc: cancel"
+            box.border_subtitle = (
+                "starts Docker after a confirmation" if self.form.starts_docker else "reads only"
+            )
             with VerticalScroll(id="form-fields"):
-                for field in self.form.fields:
-                    yield self._input(field)
+                for field in main:
+                    yield self._row(field)
+                if more:
+                    yield Collapsible(*(self._row(f) for f in more), title="more options",
+                                      id="form-more")  # fmt: skip
+            yield Static("", id="form-help")
             yield Static("", id="form-error")
             with Horizontal(id="form-buttons"):
-                yield Button("Cancel", id="form-cancel")
-                yield Button("Continue", id="form-continue", variant="primary")
+                yield Static("* required · the CLI checks every value", id="form-note")
+                yield Button("Cancel", id="form-cancel", compact=True)
+                yield Button("Continue", id="form-continue", compact=True)
 
     def on_mount(self) -> None:
         self._show_target_fields()
+
+    def on_descendant_focus(self, event: Any) -> None:
+        widget_id = getattr(event.widget, "id", None) or ""
+        self.query_one("#form-help", Static).update(Text(self._help.get(widget_id, "")))
 
     def _show_target_fields(self) -> None:
         target = self._target()
         for field in self.form.fields:
             if field.target is None:
                 continue
-            widget = self.query_one(f"#{_widget_id(field)}")
-            holder = (
-                widget.parent
-                if widget.parent is not None and widget.parent.has_class("field")
-                else widget
-            )
-            holder.display = field.target == target  # fmt: skip
+            row = self.query_one(f"#{_widget_id(field)}").parent
+            if row is not None and isinstance(row, Horizontal):
+                row.display = field.target == target
 
     def on_select_changed(self, message: Select.Changed) -> None:
         if message.select.id == "field-target":
@@ -236,6 +308,16 @@ class CommandFormScreen(ModalScreen[tuple[list[str], dict[str, Any]] | None]):
 # -- confirm -------------------------------------------------------------------------------------
 
 
+def notes_text(notes: Sequence[str]) -> Text:
+    """The confirmation's notes: a line starting with ``!`` is a warning (amber), the rest plain."""
+    out = Text()
+    for index, note in enumerate(notes):
+        if index:
+            out.append("\n")
+        out.append(note, style=PALETTE["warn"] if note.startswith("!") else PALETTE["text"])
+    return out
+
+
 class ConfirmScreen(ModalScreen[bool]):
     """The whole command line before anything starts; the focus is on Cancel."""
 
@@ -250,6 +332,7 @@ class ConfirmScreen(ModalScreen[bool]):
         notes: Sequence[str],
         plan: Callable[[], tuple[int | None, str]] | None = None,
         reconfirm: bool = False,
+        width: int = 92,
     ) -> None:
         super().__init__()
         self.argv = list(argv)
@@ -257,20 +340,24 @@ class ConfirmScreen(ModalScreen[bool]):
         self._plan = plan
         self._reconfirm = reconfirm
         self._asked_once = False
+        self._width = width
 
     def compose(self) -> ComposeResult:
+        command = self.argv[1] if len(self.argv) > 1 else ""
         with Vertical(id="confirm", classes="run-box") as box:
-            box.border_title = f"start {self.argv[1] if len(self.argv) > 1 else ''}?"
+            box.border_title = f"start {command}? · starts Docker"
             box.border_subtitle = "nothing runs until Start · esc: cancel"
-            yield Static(shlex.join(self.argv), id="confirm-command")
-            yield Static(f"in {self._cwd}\nprogram {self._program}", id="confirm-where")
-            yield Static("\n".join(self._notes), id="confirm-notes")
-            yield VerticalScroll(Static("", id="confirm-plan-body"), id="confirm-plan")
+            yield Static(Text(wrapped_command(self.argv, self._width)), id="confirm-command")
+            yield Static(Text(f"in {self._cwd}\nprogram {self._program}"), id="confirm-where")
+            yield Static(notes_text(self._notes), id="confirm-notes")
+            yield VerticalScroll(
+                Static("", id="confirm-plan-body", markup=False), id="confirm-plan"
+            )
             with Horizontal(id="confirm-buttons"):
                 if self._plan is not None:
-                    yield Button("Plan (--dry-run)", id="confirm-plan-button")
-                yield Button("Cancel", id="confirm-cancel")
-                yield Button("Start", id="confirm-start", variant="warning")
+                    yield Button("Plan (--dry-run)", id="confirm-plan-button", compact=True)
+                yield Button("Cancel", id="confirm-cancel", compact=True)
+                yield Button("Start", id="confirm-start", compact=True)
 
     def on_mount(self) -> None:
         self.query_one("#confirm-cancel", Button).focus()  # one Enter never starts a run
@@ -280,15 +367,15 @@ class ConfirmScreen(ModalScreen[bool]):
         if button == "confirm-cancel":
             self.dismiss(False)
         elif button == "confirm-plan-button" and self._plan is not None:
-            body = self.query_one("#confirm-plan-body", Static)
-            body.update("planning (the CLI with --dry-run; nothing runs)…")
+            self.query_one("#confirm-plan-body", Static).update(
+                "planning (the CLI with --dry-run; nothing runs)…"
+            )
             self.run_worker(self._show_plan, thread=True, exclusive=True)
         elif button == "confirm-start":
             if self._reconfirm and not self._asked_once:
                 self._asked_once = True
-                self.query_one("#confirm-notes", Static).update(
-                    "\n".join([*self._notes, "! press Start once more to start this budget"])
-                )
+                notes = [*self._notes, "! press Start once more to start this budget"]
+                self.query_one("#confirm-notes", Static).update(notes_text(notes))
                 self.query_one("#confirm-cancel", Button).focus()
                 return
             self.dismiss(True)
@@ -307,7 +394,7 @@ class ConfirmScreen(ModalScreen[bool]):
 
 class OutputScreen(ModalScreen[None]):
     """A command that runs nothing (doctor, targets, status, summary, compare): its output as
-    printed, and its exit code with the CLI's meaning."""
+    printed, and its exit code."""
 
     BINDINGS = [Binding("escape,q", "dismiss", "close")]
 
@@ -322,20 +409,42 @@ class OutputScreen(ModalScreen[None]):
             yield Static(self._body, id="output-body", markup=False)
 
 
-RUN_CSS = """
-.run-box { border: round $accent; background: $surface; padding: 0 1; }
-#picker { width: 90; height: auto; max-height: 20; }
-#form { width: 96; height: 90%; }
-#form-fields { height: 1fr; }
-.field { height: auto; }
-.field-label { color: $text-muted; }
-#form-error { color: $warning; height: auto; }
-#form-buttons, #confirm-buttons { height: 3; align: right middle; }
-#confirm { width: 100; height: auto; max-height: 90%; }
-#confirm-command { color: $accent; text-style: bold; height: auto; }
-#confirm-where { color: $text-muted; height: auto; }
-#confirm-notes { height: auto; margin: 1 0; }
-#confirm-plan { height: auto; max-height: 14; }
-#output { width: 100; height: 90%; }
-CommandPicker, CommandFormScreen, ConfirmScreen, OutputScreen { align: center middle; }
+_SURFACE, _PANEL, _RAISED = PALETTE["surface"], PALETTE["surface_alt"], PALETTE["surface_raised"]
+RUN_CSS = f"""
+CommandPicker, CommandFormScreen, ConfirmScreen, OutputScreen {{
+    align: center middle; background: {_SURFACE} 60%;
+}}
+.run-box {{
+    border: round {PALETTE["border"]}; border-title-color: {TITLE};
+    border-subtitle-color: {PALETTE["muted"]}; background: {_PANEL}; padding: 0 1;
+}}
+#picker {{ width: 96; max-width: 100%; height: auto; max-height: 90%; }}
+#picker-list {{ background: {_PANEL}; border: none; }}
+#picker-list > .option-list--option-highlighted {{ background: #164e63; }}
+#form {{ width: 96; max-width: 100%; height: auto; max-height: 100%; }}
+#form-fields {{ height: auto; max-height: 1fr; }}
+.field {{ height: 1; }}
+.field-label {{ width: 26; color: {PALETTE["muted"]}; }}
+.field Input, .field Select {{ width: 1fr; background: {_RAISED}; }}
+.field Input:focus, .field Select:focus-within {{ background: #164e63; }}
+.field Checkbox {{ border: none; padding: 0; height: 1; width: auto; background: {_PANEL}; }}
+.field Select > SelectCurrent {{ background: {_RAISED}; border: none; }}
+.field Select:focus-within > SelectCurrent {{ background: #164e63; }}
+#form-more {{ background: {_PANEL}; border: none; padding: 0; margin: 0; height: auto; }}
+#form-more > Contents {{ padding: 0; }}
+#form-more CollapsibleTitle {{ color: {TITLE}; padding: 0; }}
+#form-help {{ color: {PALETTE["muted"]}; height: auto; }}
+#form-error {{ color: {PALETTE["warn"]}; height: auto; }}
+#form-buttons, #confirm-buttons {{ height: 1; margin-top: 1; align: right middle; }}
+#form-note {{ width: 1fr; color: {PALETTE["muted"]}; }}
+.run-box Button {{
+    background: {_RAISED}; color: {PALETTE["text"]}; margin-left: 2; min-width: 10;
+}}
+.run-box Button:focus {{ background: {PALETTE["accent"]}; color: {_SURFACE}; text-style: bold; }}
+#confirm {{ width: 100; max-width: 100%; height: auto; max-height: 100%; }}
+#confirm-command {{ color: {PALETTE["accent"]}; height: auto; }}
+#confirm-where {{ color: {PALETTE["muted"]}; height: auto; }}
+#confirm-notes {{ height: auto; margin: 1 0 0 0; }}
+#confirm-plan {{ height: auto; max-height: 12; }}
+#output {{ width: 100; max-width: 100%; height: 90%; }}
 """

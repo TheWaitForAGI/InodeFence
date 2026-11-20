@@ -281,3 +281,28 @@ async def test_a_shortcut_without_a_fitting_row_says_why_and_opens_nothing(setup
         assert not isinstance(app.screen, CommandFormScreen)
         preset, why = app.shortcut_preset("verify")  # not on the Targets tab
         assert preset is None and why and "Targets" in why
+
+
+def test_the_command_line_wraps_only_between_options_and_still_pastes() -> None:
+    import shlex as _shlex
+
+    from inodefence.ui.tui.screens_run import wrapped_command
+
+    argv = ["inodefence", "explore", "--target", "python-tarfile", "--version", "3.12.16",
+            "--budget", "2500", "--auto-prepare", "--extraction-filter", "data",
+            "--out", "/a folder/with space"]  # fmt: skip
+    text = wrapped_command(argv, 40)
+    lines = text.splitlines()
+    assert len(lines) > 1 and all(line.endswith(" \\") for line in lines[:-1])
+    assert all(line.startswith("  ") for line in lines[1:])
+    assert all(not line.strip().startswith(("3.12.16", "2500", "data")) for line in lines)
+    assert _shlex.split(text.replace("\\\n", " ")) == argv  # pastes back to the same command
+
+
+def test_required_and_common_fields_come_before_more_options() -> None:
+    from inodefence.ui.tui.forms import command_forms
+    from inodefence.ui.tui.screens_run import ordered_fields
+
+    main, more = ordered_fields(command_forms()["explore"])
+    assert [f.dest for f in main][:5] == ["version", "target", "budget", "seed", "auto_prepare"]
+    assert {"profile", "dry_run", "verbose", "quiet"} <= {f.dest for f in more}

@@ -21,14 +21,14 @@
   옵션이 없으면 입력 줄·라운드·`replay.json`이 전과 같다. 0보다 큰 수는 후보 선별 신호이며 위반 판정이 아니다.
   [USAGE](docs/USAGE.md)
 - `inodefence dashboard [FOLDER ...] [--host] [--port]`: 로컬 읽기 전용 웹 대시보드(기본 127.0.0.1:8765, GET만).
-  페이지는 Overview·Targets·Experiments·Findings·Replay·Artifacts. 선택 설치 `web`이 없거나 서버가 시작하지 못하면
+  페이지는 Overview·Targets·Experiments·Flagged cases·Replay·Artifacts. 선택 설치 `web`이 없거나 서버가 시작하지 못하면
   한 줄과 종료 3.
   [USAGE](docs/USAGE.md#웹-대시보드dashboard)
 - 대화형 터미널(선택 설치 `ui`)에서 `status`는 결과 표, `summary`는 마크다운을 그려서 보여 준다. `--plain`, 파이프,
   `-o`는 지금의 텍스트 그대로다. `explore`의 진행 화면도 같은 디자인(실행 막대, 카드, 종료 상태 막대, 끝의 결과 패널)이고,
   마지막 진행 줄은 그대로 마지막에 남는다.
 - `inodefence tui [FOLDER ...] [--refresh 초]`: 이 호스트의 실행 폴더를 읽기 전용으로 보는 터미널 대시보드
-  (Overview·Targets·Campaigns·Findings·Artifacts 탭). 선택 설치 `tui`가 없거나 대화형 터미널이 아니면 한 줄과
+  (Overview·Targets·Campaigns·Flagged cases·Artifacts 탭). 선택 설치 `tui`가 없거나 대화형 터미널이 아니면 한 줄과
   종료 3. [USAGE](docs/USAGE.md#터미널-대시보드tui)
 - `inodefence compare A B`: 두 결과를 케이스별로 나란히 보여 준다. 양쪽에 기록된 입력 SHA-256이 같을 때만
   "same", 엄격한 읽기가 거절한 결과는 "as stored"와 이유를 붙인다. `verify`·`replay`는 대화형 터미널에서만 드라이버의

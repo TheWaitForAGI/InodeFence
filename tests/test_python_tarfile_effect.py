@@ -177,3 +177,16 @@ def test_extractor_oserror_is_a_failed_incomplete_trace_not_an_exception() -> No
     assert trace.termination == EffectTargetTermination.FAILED
     assert not trace.integrity_valid
     assert tuple((r.entry_index, r.path) for r in trace.archive_entries) == _entry_identity(case)
+
+
+def test_in_process_empty_archive_success_is_a_complete_trace() -> None:
+    """#533: the in-process path counts tarfile's own members; an empty archive is 0 of 0."""
+    from dataclasses import replace
+
+    from inodefence.model import EffectStreamCompleteness, ExecutionStatus
+
+    empty = replace(_FIX["normal"].case, entries=())
+    run = run_python_tarfile_effect_case(empty, PythonTarfileEffectTarget("data"))
+    assert run.result.base_result.execution.status is ExecutionStatus.SUCCESS
+    assert run.result.trace.completeness is EffectStreamCompleteness.COMPLETE
+    assert run.result.trace.integrity_valid is True

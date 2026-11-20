@@ -89,6 +89,8 @@ from inodefence.drivers.repo import code_checkout, require_repository_or_exit
 from inodefence.drivers.runtime import health
 from inodefence.drivers.runtime.session import RuntimeSession
 from inodefence.target_result import (
+    FAST_ACCEPTANCE_CRITERION_MET_NO_VIOLATION_PATHS,
+    FAST_ACCEPTANCE_NOT_MEASURED,
     RUN_ERROR,
     BenignControl,
     CaseVerdict,
@@ -249,6 +251,68 @@ class PreparedTargetImage:
 # verdict is reproducible from the file alone.
 DEFAULT_MAX_UNJUDGED_RATIO = 0.2
 
+#: ``--mutation-policy`` values exploration accepts (exploratory, opt-in): only the v2 grammar
+#: policy ``MutationPolicy.V2_FREEZE3_FIXED_BASELINE`` (escape depth 0..3; a test pins the value
+#: to the enum). Without the option a run uses each target's own default, unchanged. The v2.1
+#: seed-corpus variant is not offered (node-tar rejects its empty seed; the python-tarfile loop
+#: refuses it for want of an approved exploration plan, #533).
+EXPLORE_MUTATION_POLICIES = ("uniform-b-grammar-v2-freeze-3-fixed-baseline-v1",)
+#: The targets whose exploration can run a ``--mutation-policy`` value; the explore driver refuses
+#: the option for any other target before anything is prepared or run (exit 3).
+MUTATION_POLICY_TARGETS = ("node-tar", "python-tarfile")
+#: D065: the targets whose ``--profile fast`` keeps the shared-image rebuild skip only, each with
+#: the FAST acceptance state its result records (``campaign.identity_checks.fast_acceptance``).
+#: The D064 identity-probe interval is not applied to them, so their image identity is probed
+#: before every case, as STRICT does. ``not_measured``: no FAST acceptance measurement exists.
+FAST_PER_CASE_IDENTITY: dict[str, str] = {
+    "decompress": FAST_ACCEPTANCE_NOT_MEASURED,
+    "oras-go": FAST_ACCEPTANCE_NOT_MEASURED,
+    "python-tarfile": FAST_ACCEPTANCE_CRITERION_MET_NO_VIOLATION_PATHS,
+}
+FAST_PER_CASE_IDENTITY_TARGETS = tuple(FAST_PER_CASE_IDENTITY)
+#: The launcher environment variable that selects the mutation policy. An explore driver never
+#: passes the caller's own value through: it sets it from ``ExploreOptions.mutation_policy`` (or
+#: its target's default) and otherwise removes it, so a run without the option is the default run
+#: whatever the caller's environment holds.
+MUTATION_POLICY_ENV = "DEMO_MUTATION_POLICY"
+
+
+#: The launcher environment variable that selects the search policy. Exploration runs each
+#: target's fixed search policy; no explore driver passes the caller's own value through.
+SEARCH_POLICY_ENV = "DEMO_POLICY"
+
+
+def _drop_inherited(env: dict[str, str], name: str, instead: str) -> None:
+    """Remove the caller's ``name`` from a launcher env, saying so in one stderr line.
+
+    A run that used to choose a setting through this variable must not silently fall back to the
+    default: the warning names the variable and what to do instead. stdout, the result and the
+    exit code are unchanged.
+    """
+    inherited = env.pop(name, None)
+    if inherited is not None:
+        print(
+            f"TARGET-EXPLORE WARNING: environment variable {name}={inherited} is ignored; "
+            f"{instead}",
+            file=sys.stderr,
+        )
+
+
+def drop_inherited_mutation_policy(env: dict[str, str]) -> None:
+    """The caller's ``DEMO_MUTATION_POLICY`` never reaches a launcher (``--mutation-policy``)."""
+    # The target list comes from MUTATION_POLICY_TARGETS so the message follows the option.
+    _drop_inherited(
+        env,
+        MUTATION_POLICY_ENV,
+        f"use --mutation-policy ({', '.join(MUTATION_POLICY_TARGETS)} exploration)",
+    )
+
+
+def drop_inherited_search_policy(env: dict[str, str]) -> None:
+    """The caller's ``DEMO_POLICY`` never reaches a launcher (exploration's search policy is
+    fixed per target; there is no option to change it)."""
+    _drop_inherited(env, SEARCH_POLICY_ENV, "exploration runs the target's fixed search policy")
+
 
 @dataclass(frozen=True, slots=True)
 class ExploreOptions:
@@ -267,6 +331,17 @@ class ExploreOptions:
     #: The runtime session the hook passes to ``run_launcher`` (``None``: a plain, unrecorded
     #: launch, as before). The explore driver always passes one (STRICT by default).
     runtime: RuntimeSession | None = None
+    #: ``--mutation-policy`` (one of ``EXPLORE_MUTATION_POLICIES``), or ``None``: the target's own
+    #: default. Only targets in ``MUTATION_POLICY_TARGETS`` get a value (the driver refuses it for
+    #: the others); a hook that runs it records it in the result's campaign block.
+    mutation_policy: str | None = None
+
+
+def requested_identity_check_every(options: ExploreOptions) -> int | None:
+    """The identity probe interval this exploration's runtime session asked for (FAST), or
+    ``None``: a probe before every case (STRICT, or no session)."""
+    runtime = getattr(options, "runtime", None)
+    return runtime.policy.identity_check_every if runtime is not None else None
 
 
 @dataclass(frozen=True, slots=True)

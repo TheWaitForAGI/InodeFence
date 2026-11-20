@@ -2,7 +2,7 @@
 
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Protocol, final
 
@@ -19,6 +19,7 @@ from inodefence.model.provenance import ExecutionSafety, TargetProvenance
 from inodefence.runtime import disposable_sandbox
 
 from ._paths import validate_run_paths
+from .identity_schedule import IdentitySchedule
 
 
 class TargetInvocation(Protocol):
@@ -70,6 +71,8 @@ class IsolatedTarget:
 
     invocation: TargetInvocation
     backend: ExecutionBackend
+    #: None = STRICT (identity probe before every archive). FAST exploration only (#536).
+    identity_schedule: IdentitySchedule | None = field(default=None, compare=False)
 
     def __post_init__(self) -> None:
         if not isinstance(self.backend, ExecutionBackend):
@@ -115,13 +118,22 @@ class IsolatedTarget:
             raise BackendError("target artifact identity changed after setup")
         return observed
 
+    def verify_identity_at_end(self) -> None:
+        """FAST: the closing identity probe; raises on a mismatch. STRICT: nothing to do."""
+        if self.identity_schedule is None:
+            return
+        self._observe_artifacts()
+        self.identity_schedule.end_checked = True
+
     @contextmanager
     def prepare(
         self, archive_path: Path, extraction_root: Path
     ) -> Iterator[Callable[[], ExecutionResult]]:
         validate_run_paths(archive_path, extraction_root)
-        # Standalone execution has the same admission rule as campaign freeze.
-        self._observe_artifacts()
+        # Standalone execution has the same admission rule as campaign freeze. FAST exploration
+        # (#536) probes every N-th case and at the end instead (identity_schedule.py).
+        if self.identity_schedule is None or self.identity_schedule.due():
+            self._observe_artifacts()
         command = self.invocation.command(archive_path, extraction_root)
         timeout = self.provenance.timeout_seconds
         if timeout is None:

@@ -105,5 +105,8 @@ def run_python_tarfile_contained_case(
             sandbox.root,
             sandbox.extraction_root,
             CONTAINER_MECHANISM,
+            # The worker's own count (its final line, checked against its member lines by
+            # parse_worker_output); None when the report is missing or unreadable (#533).
+            worker_members=None if capture.report_error is not None else len(capture.members),
         )
     return EffectRunResult(base, trace)

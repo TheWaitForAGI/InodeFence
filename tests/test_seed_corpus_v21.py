@@ -332,7 +332,7 @@ def test_v2_grammar_policy_set_matches_dispatch() -> None:
 def test_python_tarfile_refuses_v21_before_binding() -> None:
     from inodefence.python_tarfile_explore import python_tarfile_exploration_report
 
-    with pytest.raises(ValueError, match="non-registered seed corpus"):
+    with pytest.raises(ValueError, match="non-registered seed corpus") as caught:
         python_tarfile_exploration_report(
             None,  # type: ignore[arg-type]  # refused before the backend is touched
             "image",
@@ -340,6 +340,10 @@ def test_python_tarfile_refuses_v21_before_binding() -> None:
             "3.12.16",
             mutation_policy=V21,
         )
+    # W4: refused for want of an approved exploration plan; the #533 reason is resolved.
+    assert "no exploration plan is approved" in str(caught.value)
+    assert "승인된 탐색 계획이 없어 거부한다(#533 사유는 해소)" in str(caught.value)
+    assert "until #533 is fixed" not in str(caught.value)
 
 
 def test_python_tarfile_accepts_v2_on_registered_corpus() -> None:

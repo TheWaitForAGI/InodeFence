@@ -1291,6 +1291,8 @@ v2 실험의 문법과 구조 분류는 아래 동결본을 기준으로 한다.
 
 > **2026-11-18 정정.** 상태 줄의 "사전등록 v2 #510에서 인용"은 더 이상 해당하지 않는다. 후속 확증 실험이 중단됐기 때문이다(D063). 문법 `b-grammar-v2-freeze-3`과 분류기 `input-structure-class-v1-freeze-1`은 정의 문서로 남는다. 분류기 freeze-2는 발행하지 않는다.
 
+> **2026-11-18 정정 2 (D064).** 위 "수정 금지 파일(공유 경로 파일과 사전등록이 가리키는 파일)은 바이트 동일하게 둔다"에는 지웅 승인 예외가 하나 있다. #536 FAST 방안 1 배선으로 실행 경로 파일 여섯 개에 승인된 줄만 더했다(파일별 상한과 실제 줄 수는 D064). 공유 경로 파일의 대조 기준은 main이다(#532·#536 뒤). 등록 실행 재현은 E(`bed077a`) 체크아웃이나 동결 태그에서만 한다. 등록 arm·실행 커밋 E와 사전등록이 가리키는 다른 파일은 그대로 바이트 동일하다.
+
 ## D062 — 수정 금지 파일 `feedback/effect_search.py`의 일회 예외: v2 사슬 R의 `EffectSearchPolicy` 멤버 추가
 
 **상태:** 확정 (2026-11-18, 방법 검토 IF-W4-METHOD 서명; 사전등록 v2 #510에 명시)
@@ -1339,3 +1341,176 @@ v2 엔진은 탐색과 후속 분석용이며, 확증 실험의 실행 커밋으
 새 동작은 정책 id를 명시해야만 켜진다. 제품 기본값은 바뀌지 않는다. 기본값 변경은 0.3 범위에서 지웅이 정한다.
 
 D060·D062는 기록으로 남는다. D061의 동결본은 정의 문서로 남는다(D061의 2026-11-18 정정).
+
+## D064 — FAST 방안 1: 이미지 신원 확인을 캠페인 단위로, 실행 경로 파일 여섯 개의 배선 예외 (#536)
+
+**상태:** 확정 (2026-11-18, 지웅 승인 세 번: "방안 1 승인", "배선 승인", "2하자". IF-H4-ORCH 전달)
+
+### 무엇을 바꾸는가
+
+- `--profile fast`일 때만 대상이 이미지 신원 확인 컨테이너를 덜 띄운다:
+  - 확인 시점은 bind 때, N번째 케이스마다, 캠페인 끝이다. N은 200이다(`identity_schedule.DEFAULT_INTERVAL` = `drivers/runtime/policy.FAST_IDENTITY_CHECK_EVERY`).
+  - 지금(STRICT)은 케이스마다 확인 전용 컨테이너를 하나 더 띄운다. 이것이 케이스당 docker CLI 21회 가운데 11회, 컨테이너 생애 2개 가운데 1개다.
+- 다음은 STRICT와 같다:
+  - 실행 컨테이너의 생성·정책 대조·실행·제거
+  - 격리 설정
+  - 보호 파일 세 개(`execution/docker_client.py`, `execution/container.py`, `model/isolation.py`)
+  - 판정
+- 끝 확인이 실패하면 캠페인 전체가 무효다. 네 대상 모두 `result.json`이 쓰이지 않고 제품 explore는 종료 2다. 루프 보고서는 대상마다 다르다(QA 검증 45):
+  - node-tar: 끝 확인의 오류가 그대로 올라가 루프 보고서가 쓰이지 않는다. 런처가 0이 아닌 코드로 끝나고, live 폴더의 마지막 스냅숏은 `state=failed`다.
+  - python-tarfile·decompress·oras-go: 컨트롤러가 오류를 받아 `aborted`(사유·분류)만 담은 루프 보고서를 쓰고 종료 1이다. 드라이버는 이것을 중단으로 읽어 결과를 쓰지 않는다.
+- 기본값은 STRICT이고 replay는 항상 STRICT다. 등록 러너는 이 값을 넘기지 않는다.
+- 네 대상(node-tar, python-tarfile, decompress, oras-go)에 적용한다.
+
+### 실행 경로 파일 여섯 개의 예외
+
+`run_effect_demo.py`·`container_controller.py`·`local_node_tar_smoke.sh`는 수정 금지 합집합(SHARED_PATH_FILES)에 있다. 나머지 세 대상의 런처(`launcher_path`)는 그 목록에 없지만 같은 실행 경로라 같은 규칙으로 다룬다. 대상 객체는 컨트롤러 안에서 만들어지고 런처는 정해진 `DEMO_*` 값만 넘기므로, 값을 전달할 기존 통로가 없다. 그래서 다음 줄의 추가만 예외로 허용한다. 로직은 공유 파일 밖 `targets/identity_schedule.py`에 있다.
+
+| 파일 | 승인 상한 | 실제 | 내용 |
+| --- | --- | --- | --- |
+| `scripts/run_effect_demo.py` | +9, 삭제 0 | +9, 삭제 0 | import 1, 전달 인자 이름 1, `--identity-check-every` 1, `demo_options` 2, 매개변수 1, `apply_identity_schedule` 1, `finish_identity_schedule` 1, `report.update` 1 |
+| `scripts/container_controller.py` | +7 | +5, 삭제 0 | import 1, decompress·oras-go 각 `apply_identity_schedule` 1과 `report.update(finish_identity_schedule(...))` 1 |
+| `scripts/local_node_tar_smoke.sh` | +1 | +1 | `DEMO_IDENTITY_CHECK_EVERY` → `--identity-check-every` |
+| `scripts/local_python_tarfile_explore.sh`, `scripts/local_decompress_selfdiscover.sh`, `scripts/local_oras_go_selfdiscover.sh` | 각 +1 | 각 +1 | 같은 한 줄 |
+| `scripts/container_host.py` | 0 | 0 | — |
+
+- 값(`DEMO_IDENTITY_CHECK_EVERY`)이 없으면 인자열과 동작이 지금과 같다.
+- **이 여섯 파일은 main `fccdf35`과 바이트 동일하지 않게 된다.** 공유 경로 대조의 이 파일 항목은 "승인된 줄만 다름"으로 바뀐다. 이것은 `tests/test_fast_wiring_shared_lines.py`가 고정한다:
+  - 승인된 줄을 빼면 각 파일이 `fccdf35` blob의 sha256과 같아야 한다.
+  - 줄 diff가 추가뿐이어야 한다.
+- 이 파일들은 이 변경 전에도 `bed077a`(등록 실행 SHA)와 동일하지 않았다(등록 뒤 main에 들어간 제품 변경).
+- **공유 경로 파일의 대조 기준은 main이다(#532·#536 뒤). 등록 실행 재현은 E(`bed077a`) 체크아웃이나 동결 태그에서만 한다.**
+- D061의 "수정 금지 파일(공유 경로 파일과 사전등록이 가리키는 파일)은 바이트 동일하게 둔다"에 대한 지웅 승인 예외다("방안 1 승인"·"배선 승인"·"2하자"). 범위는 위 표의 파일별 상한(run_effect_demo +9, container_controller +7, 런처 각 +1, container_host 0)이고, 실제 줄 수는 +9·+5·+1×4·0이다. D061에는 정정 블록을 덧붙였다(본문은 그대로).
+
+### 대상별로 확인 사이에 남는 보호와 기록 (QA 사실 확인, W4 수락 조건)
+
+케이스마다 확인(#45, 런타임 감사 CR-001)의 목적은 기록되는 산출물 출처가 선언이 아니라 관찰이도록 하는 것이다. 그래서 FAST에서 확인을 건너뛴 케이스의 기록은 일어나지 않은 케이스별 관찰을 주장하지 않는다:
+- 산출물 관찰(`IsolationProvenance`, `artifact_origin="image-identification-v1"`)을 만드는 곳은 `capture_isolation()` 하나이고, 일정과 무관하게 늘 확인을 새로 돈다. 탐색 경로는 그것을 부르지 않는다.
+- step 기록·`result.json`·`summary.md`에는 케이스별 관찰을 주장하는 필드나 문구가 없다. `result.json`의 worker·producer·lock sha256은 캠페인 전 준비 때의 캠페인 단위 값이다.
+- `campaign.identity_checks`는 루프가 보고한 확인 일정 기록(간격, 시작·주기·끝 횟수)만 옮긴다. 대상의 선언값(artifacts)은 넣지 않는다(선언이 관찰로 올라가지 않게).
+
+
+- **node-tar**: 건너뛴 케이스에도 실제 케이스별 관찰이 있다. 실행 명령이 기대 해시 여섯 개를 넘기고(`targets/node_tar_effect.py` `command()`), 같은 실행 컨테이너 안의 worker가 추출 전에 같은 여섯 해시를 다시 계산해 비교한다(다르면 종료 3, `classify`가 오류). 실행 frame에 실린 identity는 `_verify_transport_frame`이 케이스마다 대조한다. 별도 확인 컨테이너를 줄여도 잃는 탐지가 없다.
+- **python-tarfile, decompress, oras-go**: 건너뛴 케이스에는 케이스별 관찰이 없다. 실행 명령에 기대 해시가 없고, 남는 것은 이미지 ID 고정과 캠페인 확인(시작·N마다·끝)이다. 탐색 기록은 그 케이스에 관찰을 주장하지 않는다. 이미지 ID 고정은 이렇다:
+  - 실행 컨테이너는 sha256 이미지 ID로 만든다(`execution/container.py`: create 인자, 생성 직후 `Image` 대조, `image inspect`의 `Id` 대조).
+  - 컨테이너는 `--read-only`다.
+  - 그래서 이미지 안 파일이 ID 변화 없이 케이스 사이에 바뀔 수 없다. 바뀌면 다음 주기 확인이나 끝 확인에서, 그 케이스가 아니라 나중에 탐지된다.
+- 이미지 내용과 확인 구현은 지금처럼 trusted다.
+
+### 케이스마다 확인은 문서화된 설계 속성이다: FAST가 유지하는 것과 완화하는 것
+
+- 근거: 케이스마다 확인은 런타임 감사 수정 `adb43c0`(#45, 2026-10-04, "frozen runtime audit findings")에서 들어왔고, node-tar effect 대상은 `2b4ec27`(2026-10-13)에서 같은 방식을 따랐다. 설계 문서 `docs/research/design/architecture.md`가 이것을 속성으로 적는다:
+  > "Invocation artifact digests are **declarations/expectations**. `bind()` discovery does not authorize later constructed/replaced values. The wrapper executes the invocation's identity probe through the inspected backend image and verifies versions/digests before campaign freeze and before each standalone/prepared archive execution. … mismatches abort before extraction, including when ExperimentConfig matches the false declaration."
+- **FAST가 유지하는 것:**
+  - 거짓 선언(대상 객체의 선언 값이 이미지 내용과 다름)은 캠페인 시작 확인(bind)에서 추출 전에 잡힌다.
+  - node-tar는 케이스마다 실행 컨테이너 안에서 worker가 같은 identity를 다시 확인한다(위 절).
+  - 끝 확인이 실패하면 캠페인 전체가 무효다.
+- **FAST가 완화하는 것:** "before each … prepared archive execution"이 FAST에서만 "시작·N번째마다·끝"이 된다.
+  - python-tarfile·decompress·oras-go에서는 캠페인 도중 선언과 이미지 내용이 어긋나도 다음 확인까지 추출이 계속된다. 다만 결과는 발행되지 않는다(끝 확인).
+  - STRICT는 이 속성을 그대로 지킨다.
+  - `architecture.md`의 그 문단에 이 예외를 한 문장으로 더한다.
+- 태그 재지정과 로컬 재빌드는 실행이 이미지 ID로 고정되므로 이 확인의 대상이 아니다.
+
+### 등록 실험과의 관계
+
+- 동결된 EXP-3 규모 pilot(`experiments/preregistration/exp3-sizing-20261107/pilot_w3_items.py:195`, "4001 = 1 + 2 * 2000")은 step당 컨테이너 두 개를 셌다. 등록 처리량 수치는 케이스마다 확인을 전제한다.
+- FAST는 등록과 다른 실행 조건이다. 실행 기록(`runtime-record.json`의 `identity_check_every`, 결과의 `campaign.identity_checks`)에 그렇게 남는다.
+- 등록 경로, 사전등록, golden은 바뀌지 않는다.
+
+### 안전장치
+
+1. 대상 생성자의 기본값은 케이스마다 확인이다. STRICT 보고서·결과는 바이트 동일하다(테스트).
+2. 드라이버만 FAST에서 값을 넣는다. 호출자 환경에서 상속된 `DEMO_IDENTITY_CHECK_EVERY`는 STRICT·replay·FAST 모두 버리고 경고 한 줄을 낸다.
+3. FAST 결과는 루프가 보고한 확인 기록(`identity_checks`)이 요청한 N과 같을 때만 발행한다. 없거나 다르면 종료 2다.
+4. 승인된 줄 고정 테스트(위)가 있다.
+5. FAST 수용(판정 동일성)은 W3의 동등성 시험 설계(`20261118-HOST1-536-FAST-동등성-시험-설계.md`, 비공개 Drive)를 따른다. 실측(W1) 전에는 속도 주장을 하지 않는다. USAGE의 "실행 프로필"과 주장 행 C-PFAST는 실측 뒤 숫자와 함께 고친다.
+
+**범위.** 이 여섯 파일의 위 줄에만 해당하는 예외다. 같은 파일의 다른 변경, 다른 수정 금지 파일, 보호 파일 세 개에는 적용되지 않는다. 새 필요가 생기면 새 결정이 필요하다.
+
+**2026-11-19 정정 (D065).** 위 "네 대상에 적용한다"의 범위가 node-tar·python-tarfile로 좁혀졌다. decompress·oras-go의 FAST는 재빌드 생략만 적용하고 신원 확인 간격은 적용하지 않는다. D065 참조. 공유 경로 파일의 D064 줄은 그대로다.
+
+**2026-11-19 정정 (D067).** 간격은 node-tar에만 남는다. python-tarfile의 FAST도 케이스마다 확인한다. node-tar의 수용은 7.5.2 · default · 예산 2000에서만 측정됐고(첫 측정 F3, 후속 측정 통과), 결과에 그 범위를 기록한다. D067 참조. 공유 경로 파일의 D064 줄은 그대로다.
+
+## D065 — FAST: decompress·oras-go에는 D064 신원 확인 간격을 적용하지 않는다 (#536)
+
+**상태:** 확정 (2026-11-19, 지웅 승인 2026-11-19: '2b'; W4·IF-ORCH 방법 이의 없음)
+
+- **배경**: decompress·oras-go의 FAST 수용 측정은 지금 실행할 수 없다. explore는 같은 case를 n회 반복하지 않고, replay는 항상 STRICT다.
+- **결정**: 두 대상의 `--profile fast`는 공용 이미지 재빌드 생략(0.2.0)만 적용한다. D064의 신원 확인 간격은 적용하지 않고, 케이스마다 확인한다.
+  - 정책 값 `reuse_shared_images=True, identity_check_every=None`으로 구현한다(`drivers/run_target_explore.py`, 대상 목록 `run_target.FAST_PER_CASE_IDENTITY_TARGETS`).
+  - 공유 실행 경로 파일은 바뀌지 않는다.
+- **기록**: 결과의 `campaign.identity_checks`에 `per-case`, `interval: 1`, `fast_acceptance: not_measured`, `acceptance_evidence: false`를 적는다.
+  - `total_checks`는 적지 않는다(세지 않은 수). 이 생략은 `acceptance_evidence: false`이고 `interval`이 1인 기록에만 허용된다.
+  - stderr에 한 줄을 낸다.
+  - 이 폴더는 FAST 수용 증거로도, STRICT 기준선으로도 쓰지 않는다(비교 도구 f523f63은 어느 쪽에 넣어도 종료 2).
+- **한계**: 런처 직접 실행의 간격은 측정·수용된 모드가 아니며 그 출력은 수용 증거가 아니다.
+- **바뀌지 않는 것**: node-tar·python-tarfile의 FAST와 네 대상의 STRICT.
+- **다시 여는 조건(대상별 독립)**: 해당 대상의 FAST 생산자(같은 case 집합을 FAST로 n회)가 생기고, 그 대상에서 #536 수용(STRICT 대 FAST, 비교 도구 f523f63 종료 0, 같은 핀)을 통과하면 그 대상만 연다. 한 대상의 통과가 다른 대상을 열지 않는다.
+
+**2026-11-19 정정 (D067).** python-tarfile도 이 결정의 방식(재빌드 생략만, 케이스마다 확인)을 따른다. 표지의 `fast_acceptance`는 `criterion_met_no_violation_path_evidence`다. D067 참조.
+
+
+## D066 — #542 decompress·oras-go 탐색의 스트리밍과 예산 상한 해제 (결정 A)
+
+**상태:** 확정 (지웅 승인 2026-11-19: "승인"(결정 A, IF-H4-ORCH 세션에서 직접 확인))
+
+**결정.** `decompress-effect-campaign`·`oras-go-effect-campaign` 모드가 step을 보고서 수집기(`DecompressReportCollector`, `OrasGoReportCollector`)로 스트리밍하고, 두 모드의 예산 상한(`MAX_NATIVE_BUDGET` 2000)을 푼다. 보고서 형식은 바꾸지 않는다.
+
+**공유 실행 경로 예외(D064의 "새 필요는 새 결정").** 이 두 파일의 아래 줄에만 해당한다.
+
+| 파일 | 승인 상한 | 실제 |
+| --- | --- | --- |
+| `scripts/container_controller.py` | 추가 ≤12(교체 포함)·변경 ≤6 | +12 / −6 (순수 추가 6, 교체 6) |
+| `scripts/run_effect_demo.py` | 추가 1·변경 1 | 추가 1(`UNCAPPED_BUDGET_MODES`), 변경 1(상한 조건) |
+
+상한을 넘는 변경은 다시 여쭌다. 같은 파일의 다른 변경, 다른 수정 금지 파일에는 적용되지 않는다.
+
+**D064와의 관계.** D066은 D064와 별개의 새 결정이다. D064가 "이 여섯 파일의 위 줄에만" 허락한 줄은 그대로이고, D066은 그 줄을 바꾸지 않는다. 같은 두 파일에 D066의 줄이 따로 더해지며, 승인 줄 고정 테스트가 둘을 함께 기록한다.
+
+**적용 모드.** `decompress-effect-campaign`, `oras-go-effect-campaign`(상한 해제와 스트리밍), 그리고 이미 상한이 없던 `effect-demo-explore`. `effect-demo`, `effect-demo-historical`, `python-tarfile-effect-campaign`과 등록 실행의 상한은 그대로다.
+
+**불변식과 고정.**
+1. 기존 동작 바이트 동일: M4 기록 모드 자체에서 옛 경로와 새 경로의 증거 바이트가 같다. `tests/test_542_m4_record_mode_identity.py`가 두 컨트롤러 캠페인 함수를 끝까지 돌려 40 구성의 증거 sha256을 변경 전 컨트롤러에서 만든 golden(`tests/fixtures/m4-record-mode-542/golden.json`)과 대조한다.
+2. 상한 해제의 범위(W4 ①): 저장소에서 두 모드에 2000 넘는 예산을 넣는 경로는 탐색 드라이버(`drivers/decompress/explore.py`, `drivers/oras_go/explore.py`)뿐이다(`tests/test_542_budget_cap_scope.py`). 사람이 런처나 컨트롤러를 직접 불러 상한을 넘기는 실행은 막지 않는다. 스트리밍이라 메모리는 실행 수에 비례해 늘지 않는다. 과거 M4 결과를 다시 만들 때는 그 설정의 예산(2000 이하)을 쓴다.
+3. 승인된 줄 고정: `tests/test_fast_wiring_shared_lines.py`가 결정 A의 줄을 추가와 교체 쌍으로 기록한다. 되돌리면 main fccdf35 blob과 같다.
+
+**남은 것.** `run_effect_demo.py` `:363–366`의 주석은 이 변경 뒤 사실과 다르다(두 모드도 상한을 푼다). 주석 정정은 공유 파일 변경이라 이 승인에 넣지 않았고, 공유 파일 묶음에 주석 정정 행으로 올린다.
+
+**등록 경로.** 등록 arm(EXP-0·2·3)은 node-tar뿐이라 이 두 모드에 닿지 않는다.
+
+## D067 — FAST: node-tar만 D064 간격(측정한 범위를 기록), python-tarfile은 케이스마다 (#536)
+
+**상태:** 확정 (2026-11-19, W1 판정 PASS, W4 독립 확인 완료; IF-ORCH D-ORCH-1119-418)
+
+- **배경**: node-tar 7.5.2 · default 정책 · 예산 2000에서 첫 측정은 F3(판정 불가)였고, 결과 전에 고정한 후속 측정(W4 규칙 v3)은 통과했다: 세는 seed 5개(58005, 58006, 58009, 58010, 58014) 모두 비교 도구 f523f63 종료 0, 갈림 0/2000 step(엔진 3ca9c69). 이 조건에서 STRICT와 FAST의 궤적이 일치함을 확인한 것이고, 다른 버전·정책·예산·대상은 측정하지 않았다. 증거: 비공개 Drive 묶음(SHA256SUMS `17660d14`, 682 파일; 계수 집합 봉인 SEAL.tsv SHA-256 `9f8763d973b8bad981b68479e1f9cfe08291a3ed47ab534ebf448e59482f2d1c`), 원장 141행. (seed 57590) python-tarfile: 실행 전 고정한 기준(compare exit 0)은 충족. 단 세 실행 모두 위반 0건이라 위반이 없는 실행에서의 궤적 일치(갈림 0/300)이며, 이 대상의 위반 경로에 대한 근거는 없다.
+- **W4 결과 문단**(독립 판정, 2026-11-19. 원문은 비공개 Drive 파일 sha256 `daae579c…`이고, 아래는 운영 세부(재시작 횟수 일부, 호스트 로컬 경로)만 뺀 원문 그대로다):
+
+  > **#536 FAST 후속 수용 측정 — 결과 문단 (W4 독립 판정, 2026-11-19)**
+  >
+  > out-of-registration, 등록 결과와 비pool. 규칙 v3 시작-동결(sha 37651dbe). W4 독립 확인 완료.
+  >
+  > **판정: (A) PASS → 갈래 P**
+  >
+  > node-tar **7.5.2 / default 정책 / 예산 2000**에서, 사전 고정 규칙(v3; 계수 seed = STRICT 위반 ≥1, N_min 3, 2단계 STRICT 선행 → 계수집합 봉인 → FAST)으로 신원검사 간격 완화(identity_check_every) FAST의 **궤적 동일성**을 측정했다.
+  >
+  > - 봉인된 새 seed 배치(58001–58014)의 STRICT 선행에서 **계수 seed 5개**(58005·58006·58009·58010·58014; 위반 21·9·6·3·29)가 N_min 3을 충족했고, 계수 집합을 **FAST 실행 전에 sha 봉인**(SEAL.tsv 9f8763d9, result.json sha 포함). 비계수 9 seed(위반 0)는 FAST 미실행(설계).
+  > - **5 계수 seed 전부**에서 STRICT·FAST 궤적이 **2000/2000 단계 발산 0**으로 합치(compare exit 0, comparator f523f63). 위반 사례 수가 STRICT와 동일(21·9·6·3·29), 첫 위반 run 동일(658·1623·1619·1722·597). **per-pair image_id·engine 게이트 통과**(동일 frozen 이미지 sha256:22c8734f…·엔진 3ca9c69). FAST 신원검사 각 12회.
+  > - 임의 계수 seed **compare exit 1(발산) 0**. run 내부 재시작 0, 절단·재실행 0(운영 기록은 비공개 Drive 묶음).
+  >
+  > → 규칙 v3 §2: PASS = 전 계수 seed compare exit 0 ∧ 계수 ≥ N_min 3 — **둘 다 충족(5/5 exit 0, 5 ≥ 3)**. 간격 완화 FAST가 이 조건에서 STRICT 궤적을 보존함이 **측정으로 확증**됐다.
+  >
+  > **단서 (범위·기작)**
+  >
+  > - **기작**: 간격 완화는 **oracle 판정(C0/C1/C2)이 아니라** 실행-이미지·artifact integrity probe의 빈도를 완화한다(node_tar_effect.py:195, architecture #45). oracle 판정·관찰은 STRICT·FAST 모두 **케이스마다**로 간격과 독립. 그래서 이 측정이 확증하는 것은 "간격을 완화해도 궤적(입력 해시·케이스 순서·C0-C2·feedback 키·코퍼스)이 STRICT와 같다"이다(위반을 놓치는지가 아님).
+  > - **수용 범위**: **7.5.2/default/예산 2000에 한정**(계수 5). 다른 버전·정책·예산은 **미측정**. 다만 (a′) 간격 완화는 궤적을 바꿀 기작이 없고(probe는 궤적 입력 아님), (b′) STRICT 위반 0 조건(예: 7.5.7/v2)에선 놓칠 것이 없으며, (c′) fail-closed(probe 불일치 시 캠페인 무효)·케이스별 컨테이너 내 6-해시 재확인(간격 무관)·content-addressed image_id 핀이 받친다. "FAST가 모든 조건에서 궤적을 보존한다"로 일반화하지 않는다.
+  > - **갈래 P 귀결**: node-tar는 간격 완화 유지; python-tarfile·decompress·oras-go는 끈다. node-tar 수용 범위 매칭 실행 마커 `fast_acceptance:"passed"` + `acceptance_scope{version 7.5.2, policy default, budget 2000, counted_seeds 5, rule v3 37651dbe}`; 범위 밖 node-tar FAST는 `"interval_on_unmeasured_scope"`. (제품 a/b/a+ 최종 선택은 지웅.)
+  >
+  > 번들: `followup-20261119/`(SHA256SUMS 17660d14, 682 파일), FINAL.md, SEAL.tsv(9f8763d9), compare-*.json 5.
+
+  문단의 `counted_seeds 5`는 W4의 원문 표기다. 코드의 마커는 그 다섯 seed의 목록(`[58005, 58006, 58009, 58010, 58014]`)과 사람용 `rule: "W4 v3"`, 64자리 `rule_sha`를 적는다(W4 권고: 마커만으로 seed와 규칙이 복구되게).
+- **결정**:
+  - node-tar의 `--profile fast`는 D064 간격(시작·200건마다·끝)을 유지한다. 결과의 `campaign.identity_checks`에 `fast_acceptance`와 측정 범위 `acceptance_scope`(version 7.5.2, policy default, budget 2000, counted_seeds `[58005, 58006, 58009, 58010, 58014]`, rule `W4 v3`, rule_sha `37651dbeb2aa6e353732fdb6640b7e7f375aa50c91053d0598ab2f6af18417a0`)를 적는다. 그 실행이 이 범위와 정확히 같을 때만 `passed`이고, 그 밖의 버전·정책·예산에서는 간격은 그대로 켜되 `interval_on_unmeasured_scope`다(버전으로 간격을 끄지 않는다).
+  - python-tarfile의 `--profile fast`는 decompress·oras-go(D065)처럼 재빌드 생략만 적용하고 케이스마다 확인한다. 결과의 표지는 `per-case`, `fast_acceptance: criterion_met_no_violation_path_evidence`다(위 python-tarfile 문장).
+  - 공유 실행 경로 파일과 판정은 바뀌지 않는다.
+- **범위를 좁힌 근거**: 지웅의 말 "지금 실험 하는거의 후속으로 조치만 하고 다 일단락해보자 깃허브 푸쉬나 드라이브에 넣고". 측정 결과대로 싣는 것은 IF-ORCH 권고이고 명시적 선택 답은 없다(W4 문단의 "제품 a/b/a+ 최종 선택은 지웅"). 승인 범위(D064)를 좁히는 방향이라 기존 승인을 넘지 않는다.
+- **속도**: 케이스당 시간(HOST1 관찰값, 위 node-tar 조건의 후속 측정, 수용 기준 아님): STRICT 1.245 s, FAST 0.614 s. 이 조건 밖의 속도는 측정하지 않았다.

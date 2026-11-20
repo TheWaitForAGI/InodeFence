@@ -25,14 +25,30 @@ from pathlib import Path
 
 from inodefence.target_result import (
     CONTRACTS,
+    FAST_ACCEPTANCE_CRITERION_MET_NO_VIOLATION_PATHS,
+    FAST_ACCEPTANCE_FAILED,
+    FAST_ACCEPTANCE_INDETERMINATE_F3,
+    FAST_ACCEPTANCE_NOT_MEASURED,
     RUN_ERROR,
     ResultMode,
     TargetResult,
     TargetResultError,
     Verdict,
+    is_per_case_identity_marker,
     load_target_result,
     no_extraction_warning,
 )
+
+#: D065: the summary's words for each ``fast_acceptance`` value (one table, values from
+#: ``target_result``). A value without an entry is shown as per case only.
+PER_CASE_SUMMARY = {
+    FAST_ACCEPTANCE_NOT_MEASURED: "FAST 수용 측정 없음",
+    FAST_ACCEPTANCE_CRITERION_MET_NO_VIOLATION_PATHS: (
+        "사전 고정 기준은 충족, 모든 실행 위반 0건이라 위반 경로 근거 없음"
+    ),
+    FAST_ACCEPTANCE_INDETERMINATE_F3: "FAST 수용 판정 불가(F3)",
+    FAST_ACCEPTANCE_FAILED: "FAST 수용 실패",
+}
 
 #: Plain-language meaning of each contract (from docs/research/design/security-contracts.md).
 CONTRACT_PLAIN = {
@@ -138,7 +154,8 @@ def _headline(result: TargetResult) -> str:
         )
     if result.verdict is Verdict.ERROR and result.campaign is not None:
         return (
-            f"**ERROR** — {total}건 중 {result.unjudged_steps}건에서 오라클이 평가되지 못했다"
+            f"**ERROR** — {result.extraction_runs}건 중 {result.unjudged_steps}건에서 "
+            "오라클이 평가되지 못했다"
             f"(미판정 비율 {result.unjudged_ratio}). 보지 못한 실행이 너무 많아 위반 없음으로 "
             "읽을 수 없다. 정상 거절은 판정된 실행이라 이 수에 들지 않는다"
             f"({unjudged_rule(result.target)})."
@@ -218,6 +235,11 @@ def render_summary(result: TargetResult, *, source_name: str, inputs_verified: b
         add(f"| 위반 수 | {len(result.violating_cases)}건 |")
         add(f"| 종료 상태 | {_termination_line(result)} |")
         add(f"| 추출 성공 | {result.success_runs}건 |")
+        if campaign.build_invalid is not None:  # v2 grammar policy only; absent otherwise
+            add(
+                f"| 빌드 불가(build-invalid) | {campaign.build_invalid}건 — TAR로 만들 수 없는 "
+                "입력이라 추출하지 않음(예산 1단위씩, 미판정 아님; 미판정 비율의 분모에서 뺌) |"
+            )
         add(
             f"| 미판정 실행 | {result.unjudged_steps}건 (비율 {result.unjudged_ratio}) "
             "— 오라클이 평가되지 못했거나 깨끗한 결과로 믿을 수 없는 실행(실행 기반 오류·관찰 "
@@ -228,6 +250,27 @@ def render_summary(result: TargetResult, *, source_name: str, inputs_verified: b
             add(f"| 미판정 상한 | {campaign.max_unjudged_ratio} (넘으면 판정은 ERROR) |")
         if campaign.stopped_early:
             add("| 중단 | 사람이 예산 소진 전에 멈춤 (그때까지의 결과) |")
+        checks = campaign.identity_checks
+        if checks is not None and is_per_case_identity_marker(checks):  # D065
+            state = PER_CASE_SUMMARY.get(str(checks.get("fast_acceptance")))
+            detail = f", {state}" if state else ""
+            add(f"| 이미지 신원 확인 | 케이스마다 (FAST 간격 미적용{detail}) |")
+        elif checks is not None:  # FAST (#536 option 1) only; absent: a probe before every case
+            add(
+                f"| 이미지 신원 확인 | 캠페인 단위(시작·{checks.get('interval')}건마다·끝), "
+                f"총 {checks.get('total_checks')}회 — STRICT는 케이스마다 |"
+            )
+            scope = checks.get("acceptance_scope")
+            if isinstance(scope, dict):  # W4 Q2 (ii): the record's own scope label, verbatim
+                add(
+                    f"| FAST 수용 표시 | {checks.get('fast_acceptance')} (측정 범위: 버전 "
+                    f"{scope.get('version')}, 정책 {scope.get('policy')}, "
+                    f"예산 {scope.get('budget')}) |"
+                )
+            else:  # written before the label existed
+                add("| FAST 수용 표시 | 표시 없음(옛 기록) |")
+        if campaign.mutation_policy is not None:  # only when --mutation-policy chose it
+            add(f"| 변이 정책 | {_code(campaign.mutation_policy)} (선택한 탐색용 정책) |")
     prep = result.preparation
     if prep is not None:
         method = (

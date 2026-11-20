@@ -11,6 +11,7 @@ from typing import Any
 
 import pytest
 import scripts.run_exp0 as run_exp0
+from tests.git_checkout import require_git_checkout
 
 from inodefence.provenance import SourceProvenance
 from test_run_exp0 import SHA, TARGET_IMAGES, _fake_runner
@@ -180,6 +181,9 @@ def test_a_call_with_nothing_pending_writes_no_host_record(
 
 
 def test_worktree_write_problems_names_only_unignored_paths_inside(tmp_path: Path) -> None:
+    # The subject is git's ignore rules; outside a git checkout the check cannot tell ignored
+    # paths apart and reports them too (it refuses rather than allows).
+    require_git_checkout("git check-ignore decides which paths inside the checkout are ignored")
     problems = run_exp0.worktree_write_problems(
         {
             "outside": tmp_path / "out",

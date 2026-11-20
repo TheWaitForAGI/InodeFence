@@ -165,3 +165,6 @@ success 케이스(exit 0)에서 발생한 native 관찰 무결성 결함(malform
 - 인터페이스(PR-B/레인5): provenance에 lock 원재료(python_version·tarfile_sha256·uname_sr)만 노출, lock_digest 산출·report 기록·post_check 대조는 PR-B(execution_mode=per-case-subprocess, env DEMO_EXTRACTOR=python-tarfile). 레인4 가드레일: in-process는 ResettingProducer 미적용, parity same-mode만.
 
 - 2026-11-16 막힘(IF-H4-CORE W1): 가드 R4가 새 테스트 파일 이름의 부분 문자열로 셸 명령을 차단(오탐, 보호 파일 무변경). 이름 변경 허용 여부 사람 결정 대기. 스택 PR(탐색 결과 기록) 나머지는 그 파일 없이 진행 가능.
+- 2026-11-18 막힘(IF-H4-RES1 #519): 가드 R4가 스크래치 편집 스크립트 파일 이름의 부분 문자열(보호된 격리 정책 파일 이름과 같은 끝)로 셸 명령을 차단. 대상은 tests/test_violation_triage.py, 실행된 것 없음. ORCH에 보고.
+- 2026-11-18 막힘(IF-H4-RES1 #537): 가드 R4가 이슈 코멘트 본문에 인용된 보호 파일 경로로 gh 명령을 차단. 코멘트 미게시, 파일 무변경. ORCH에 보고.
+- 2026-11-19 막힘(IF-H4-INFRA #513, IF-H4-RES1가 대신 기록): 가드 R4가 Drive의 공유 파일 묶음 명세에 #513 P0 행을 쓰려던 셸 명령을, 문서 본문에 가드 설정 파일의 경로 이름이 인용됐다는 이유로 '가드 설정 변경 가능' 규칙에 걸어 차단(오탐). 저장소의 가드·설정 파일은 무변경(Drive 문서 편집), 우회 없음. 지웅께 오탐으로 보고했고, 지웅이 그 행을 일반 표현으로 쓰는 것을 허락해 묶음 표에 기록됐다.

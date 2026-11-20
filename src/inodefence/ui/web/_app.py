@@ -9,6 +9,7 @@ resolves it against its own last scan, so no path is ever accepted from the clie
 
 from __future__ import annotations
 
+import asyncio
 import threading
 import time
 from collections.abc import Callable, Iterable
@@ -249,13 +250,18 @@ def build_app(
     registry = RunRegistry(resolved_roots, extra=extra)
     health = HealthCache(check=lambda: _default_health_check(repo_root))
     follower = events_app.RunFollower(roots=scan_roots, interval=FOLLOW_INTERVAL_SECONDS)
+    # Set on lifespan shutdown so the SSE generator leaves its ``while`` loop instead of polling the
+    # follower forever: without it an open ``/api/events`` stream keeps the server alive on Ctrl-C.
+    shutting_down = asyncio.Event()
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
+        shutting_down.clear()
         follower.start()
         try:
             yield
         finally:
+            shutting_down.set()
             follower.stop()
 
     app = FastAPI(
@@ -269,6 +275,7 @@ def build_app(
     app.state.registry = registry
     app.state.health = health
     app.state.follower = follower
+    app.state.shutting_down = shutting_down
     app.state.repo_root = repo_root
 
     def read_snapshot(ref: runs_app.RunRef) -> runs_app.RunSnapshot:
@@ -437,7 +444,9 @@ def build_app(
         async def stream():
             try:
                 yield ": connected\n\n"
-                while True:
+                # Leave the loop on client disconnect OR server shutdown; the short poll timeout
+                # bounds how long either takes to be noticed (one SSE_POLL_TIMEOUT_SECONDS at most).
+                while not shutting_down.is_set():
                     if await request.is_disconnected():
                         break
                     event = await run_in_threadpool(subscription.get, SSE_POLL_TIMEOUT_SECONDS)

@@ -29,6 +29,10 @@ if TYPE_CHECKING:  # pragma: no cover - typing only, never imports fastapi at ru
 API_SCHEMA = "inodefence-web-api-v1"
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
+#: Seconds uvicorn waits for open responses (e.g. an SSE stream) to close on Ctrl-C before forcing
+#: exit. The app also tells the SSE generator to stop on shutdown; this is the safety net if a
+#: stream is mid-poll, so the process never hangs with a client connected.
+GRACEFUL_SHUTDOWN_SECONDS = 3
 
 _INSTALL_HINT = (
     "the InodeFence web dashboard needs its optional dependencies; "
@@ -92,7 +96,13 @@ def run(
             file=sys.stderr,
         )
     app = create_app(roots, extra=extra, repo_root=repo_root)
-    uvicorn.run(app, host=host, port=port, log_level="info")
+    uvicorn.run(
+        app,
+        host=host,
+        port=port,
+        log_level="info",
+        timeout_graceful_shutdown=GRACEFUL_SHUTDOWN_SECONDS,
+    )
     return 0
 
 

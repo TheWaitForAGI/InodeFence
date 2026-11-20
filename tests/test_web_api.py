@@ -156,13 +156,17 @@ def test_run_defaults_to_loopback_and_warns_on_other_host(run_out, monkeypatch, 
 
     calls: dict[str, object] = {}
 
-    def fake_run(app, host, port, log_level):  # noqa: ANN001 - test stub
+    def fake_run(app, host, port, log_level, timeout_graceful_shutdown=None):  # noqa: ANN001 - stub
         calls["host"] = host
         calls["port"] = port
+        calls["timeout_graceful_shutdown"] = timeout_graceful_shutdown
 
     monkeypatch.setattr(uvicorn, "run", fake_run)
     assert web.run(roots=[run_out]) == 0
     assert calls["host"] == "127.0.0.1"
+    # a finite graceful-shutdown timeout, so an open SSE stream can't hang the process on Ctrl-C
+    assert calls["timeout_graceful_shutdown"] == web.GRACEFUL_SHUTDOWN_SECONDS
+    assert isinstance(web.GRACEFUL_SHUTDOWN_SECONDS, int) and web.GRACEFUL_SHUTDOWN_SECONDS > 0
     assert web.run(roots=[run_out], host="0.0.0.0") == 0
     assert "127.0.0.1" in capsys.readouterr().err  # the non-default-host warning
 
@@ -172,6 +176,17 @@ def test_events_stream_is_event_stream(run_out):
         with client.stream("GET", "/api/events") as res:
             assert res.status_code == 200
             assert res.headers["content-type"].startswith("text/event-stream")
+
+
+def test_shutdown_event_lets_sse_generator_exit(run_out):
+    # the SSE generator loops `while not shutting_down`; the lifespan sets that event on shutdown so
+    # an open /api/events stream cannot keep the server alive on Ctrl-C (uvicorn's hang, GH-#549 QA)
+    app = web.create_app(roots=[run_out])
+    assert app.state.shutting_down.is_set() is False  # fresh app, not yet serving
+    with TestClient(app) as client:
+        assert app.state.shutting_down.is_set() is False  # startup cleared it; serving
+        assert client.get("/api/runs").status_code == 200
+    assert app.state.shutting_down.is_set() is True  # lifespan shutdown set it -> the loop ends
 
 
 def test_live_run_gone_quiet_is_stalled(tmp_path):

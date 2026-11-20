@@ -395,7 +395,10 @@ function runDetailCards(data) {
     ["runs/second", p.runs_per_second], ["verdict", s.verdict],
     ["validated", s.validated == null ? null : (s.validated === false ? "as stored (not validated)" : "validated")],
     ["executed", s.executed], ["unjudged steps", s.unjudged_steps],
-    ["terminations", terms], ["candidates", (snap.findings || []).length ? findings.length : null],
+    // a read run (has a verdict or an executed count) with no flagged case is a known 0, not "—";
+    // only a run that was never read/started stays unknown.
+    ["terminations", terms],
+    ["candidates", s.verdict != null || s.executed != null || findings.length ? findings.length : null],
     ["result", s.result_path],
   ];
   const dl = el("div", { class: "rank-list" }, rows.map(([k, v]) => kv(k, v == null ? null : String(v))));
@@ -673,14 +676,19 @@ async function renderExperiments(view) {
   const heading = anyOff ? `campaigns (${shown.length} of ${campaigns.length}) · filtered` : `campaigns (${shown.length})`;
   if (experimentsSelected) {
     // detail open: the table drops rps/ver (shown in the detail) and takes 2/3 so no chip clips
-    view.appendChild(el("div", { class: "split wide" }, [cardLabeled(heading, experimentsTable(shown, onPick, true)), cardLabeled("detail", experimentsDetail(experimentsSelected))]));
+    view.appendChild(el("div", { class: "split wide" }, [cardLabeled(heading, experimentsTable(shown, onPick, true, campaigns.length === 0)), cardLabeled("detail", experimentsDetail(experimentsSelected))]));
   } else {
-    view.appendChild(cardLabeled(heading, experimentsTable(shown, onPick, false)));
+    view.appendChild(cardLabeled(heading, experimentsTable(shown, onPick, false, campaigns.length === 0)));
   }
   const tn = truncNote(state.runs); if (tn) view.appendChild(tn);
 }
-function experimentsTable(rows, onPick, compact) {
-  if (rows.length === 0) return empty("no campaigns match", []);
+function experimentsTable(rows, onPick, compact, noCampaigns) {
+  if (rows.length === 0) {
+    // nothing scanned vs everything filtered out: don't say "match" when no filter is active
+    return noCampaigns
+      ? empty("no campaigns yet", [["start one with ", el("code", {}, ["inodefence explore --target node-tar --version latest"])]])
+      : empty("no campaigns match", ["clear or widen the filters to see campaigns"]);
+  }
   const cols = compact ? ["run id", "target", "runs/budget", "state", "verdict", "term"] : ["run id", "target", "ver", "runs/budget", "rps", "state", "verdict", "term"];
   const rightCols = compact ? ["runs/budget"] : ["runs/budget", "rps"];
   const head = el("tr", {}, cols.map((h) => el("th", { class: rightCols.includes(h) ? "r" : "" }, [h])));

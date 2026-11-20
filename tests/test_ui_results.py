@@ -267,8 +267,8 @@ def test_status_on_a_rich_terminal_and_plain(monkeypatch, capsys, tmp_path, two_
     assert cli.main(["status", str(folder)]) == 0
     seen = _visible(capsys.readouterr().out)
     assert "status" in seen and "Results" in seen
-    assert "node-tar-7.5.2 ✗ FAIL node-tar 7.5.2" in seen
-    assert "node-tar-7.5.3 ✓ PASS node-tar 7.5.3" in seen
+    assert "node-tar-7.5.2 verify ✗ FAIL node-tar 7.5.2" in seen
+    assert "node-tar-7.5.3 verify ✓ PASS node-tar 7.5.3" in seen
 
 
 def test_summary_on_a_rich_terminal_draws_the_same_markdown(monkeypatch, capsys) -> None:
@@ -327,3 +327,24 @@ def test_all_same_inputs_is_info_not_pass(monkeypatch, capsys, tmp_path) -> None
     assert cli.main(["compare", str(a), str(a)]) == 0
     seen = _visible(capsys.readouterr().out)
     assert "i INFO Same inputs · 1 of 1" in seen and "✓ PASS Same" not in seen
+
+
+def test_parts_of_one_whole_add_up_to_100() -> None:
+    pytest.importorskip("rich")
+    from inodefence.ui.components import percents
+
+    assert percents([(19, 60), (41, 60), (0, 60), (0, 60)]) == [32, 68, 0, 0]  # was 31 + 68
+    assert sum(p or 0 for p in percents([(1, 3), (1, 3), (1, 3)])) == 100
+    assert percents([(1, 2)]) == [50] and percents([(2, 3)]) == [67]  # a lone row rounds
+    assert percents([(5, 0)]) == [None]  # no total, no percentage
+
+
+def test_status_names_live_records_neutrally_and_shows_each_results_kind(
+    monkeypatch, capsys, two_results
+) -> None:
+    _rich_terminal(monkeypatch)
+    folder = two_results[0].parents[1]
+    assert cli.main(["status", str(folder)]) == 0
+    seen = _visible(capsys.readouterr().out)
+    assert "Live (running or stopped before result.json)" not in seen
+    assert "node-tar-7.5.2 verify ✗ FAIL" in seen  # a verify cell: fixture inputs, not candidates

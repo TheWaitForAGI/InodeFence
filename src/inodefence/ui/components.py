@@ -85,19 +85,54 @@ def cards(items: Iterable[tuple[str, str, str]]) -> Table:
     return row
 
 
+def percents(rows: Sequence[tuple[int, int]]) -> list[int | None]:
+    """Whole percentages for ``(value, total)`` rows, ``None`` where the total is 0.
+
+    Rows that share a total and together make it up (the parts of one whole, e.g. terminations
+    of the same runs) are rounded by largest remainder, so they add up to exactly 100. Any other
+    row is rounded to the nearest whole percent. The counts (``value/total``) stay the fact; the
+    percentage only helps reading.
+    """
+    out: list[int | None] = [None] * len(rows)
+    groups: dict[int, list[int]] = {}
+    for index, (_value, total) in enumerate(rows):
+        if total > 0:
+            groups.setdefault(total, []).append(index)
+    for total, members in groups.items():
+        values = [rows[i][0] for i in members]
+        if len(members) > 1 and sum(values) == total:
+            floors = [100 * v // total for v in values]
+            remainders = sorted(
+                range(len(members)),
+                key=lambda k: (100 * values[k] % total, values[k]),
+                reverse=True,
+            )
+            for k in remainders[: 100 - sum(floors)]:
+                floors[k] += 1
+            for k, i in enumerate(members):
+                out[i] = floors[k]
+        else:
+            for i in members:
+                value = rows[i][0]
+                out[i] = (200 * value + total) // (2 * total)  # round half up
+    return out
+
+
 def bars(rows: Sequence[tuple[str, int, int, str]], *, width: int = 28) -> Table:
     """Horizontal bars: ``(label, value, total, tone)`` -> label · percent · bar · value/total.
 
-    Only for real counts: a row whose total is 0 shows no bar and no percentage.
+    Only for real counts: a row whose total is 0 shows no bar and no percentage. Percentages come
+    from :func:`percents` (parts of one whole add up to 100).
     """
     table = Table.grid(padding=(0, 2))
     table.add_column(no_wrap=True)
     table.add_column(justify="right", no_wrap=True)
     table.add_column(no_wrap=True)
     table.add_column(justify="right", no_wrap=True)
-    for label, value, total, tone in rows:
+    shares = percents([(value, total) for _label, value, total, _tone in rows])
+    for (label, value, total, tone), share in zip(rows, shares, strict=True):
         if total > 0:
-            percent = Text(f"{100 * value // total}%", style="if.label")
+            percent = Text(f"{share}%", style="if.label")
             bar: RenderableType = ProgressBar(
                 total=total,
                 completed=value,

@@ -377,7 +377,9 @@ def status_screen(
     """``inodefence status``: the live blocks as the live view wrote them, then the results."""
     out: list[RenderableType] = [ui.header("status", version=version, subject=str(folder))]
     for block in live:
-        out.append(ui.section("Live (running or stopped before result.json)", Text(block)))
+        # The block itself states the run's state (running, finished, stopped); the title only
+        # names what it is, so it is true in every state.
+        out.append(ui.section("Live records (progress and violation cases)", Text(block)))
     if not rows:
         return out
     verdicts = [str(row.get("verdict")) for row in rows]
@@ -410,8 +412,11 @@ def status_screen(
     # "first at" is an exploration value; a verify result has none, so the column is drawn only
     # when some result is an exploration (and then a missing value is "—")
     with_first = any(row.get("explore") for row in rows)
+    # kind: an exploration's violations are oracle candidates; a verify cell's are its fixed
+    # regression inputs. Shown so one is not read as the other.
     columns = [
         ("result", "left"),
+        ("kind", "left"),
         ("verdict", "left"),
         ("target", "left"),
         ("runs", "right"),
@@ -422,8 +427,10 @@ def status_screen(
     table_rows = []
     for row in rows:
         target = " ".join(str(row[k]) for k in ("target", "version") if row.get(k))
+        kind = "explore" if row.get("explore") else "verify" if "explore" in row else "?"
         line = [
             Text(str(row["cell"]), style="bold"),
+            Text(kind, style="if.label"),
             ui.chip(str(row["verdict"])),
             Text(target or UNKNOWN),
             cell(row.get("runs")),

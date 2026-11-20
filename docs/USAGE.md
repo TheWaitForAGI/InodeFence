@@ -521,7 +521,8 @@ TUI는 터미널에서 치는 것과 **똑같이 `inodefence <명령>`을 실행
   실행 파일("program …"). 기본 선택은 **Cancel**(아래에 "nothing runs until Start · esc: cancel"),
   **Plan (--dry-run)**은 같은 명령을 `--dry-run`으로 돌려 계획만 보여 주고, **Start**가 실제로 시작합니다. 창에 함께
   나오는 줄(화면 문구 그대로):
-  - `product run: its result is labelled "demo run" (not a qualification or experiment result)`
+  - `product run: its result is labelled "demo run" (or "exploratory demo run" for a version without a fixed lock) --
+    not a qualification or experiment result`
   - 예산이 2000을 넘으면 `! budget <n> is above 2000: Start asks once more` — Start를 두 번 눌러야 시작합니다(상한
     자체는 CLI의 규칙).
   - `--verbose`를 고르면 `! --verbose shows the launcher's raw output and writes no launcher log: this run is not
@@ -535,7 +536,7 @@ TUI는 터미널에서 치는 것과 **똑같이 `inodefence <명령>`을 실행
   모두 같은 폼과 확인 창을 거칩니다.
 - `l`: 내가 띄운 명령("my commands") — 상태(`running`, 종료 코드와 그 뜻, 기록이 없으면 `ended (no exit code
   recorded)`), 출력의 꼬리, 기록 위치. 기록은 `$XDG_STATE_HOME/inodefence/launches/`(기본
-  `~/.local/state/inodefence/launches/`)에 남고 TUI가 지우지 않습니다.
+  `~/.local/state/inodefence/launches/`)에 남고(소유자만 읽고 쓸 수 있게: 폴더 0700, 파일 0600) TUI가 지우지 않습니다.
 - **TUI를 닫아도 시작한 실행은 계속됩니다**(다른 터미널에서 띄운 명령과 같음). TUI에는 실행을 멈추거나 결과를 지우는
   조작이 없습니다. 멈추려면 터미널에서 직접 합니다.
 - 웹 대시보드(`inodefence dashboard`)는 여전히 읽기 전용입니다.

@@ -488,6 +488,16 @@ def _map(value: object) -> Mapping[str, Any]:
     return value if isinstance(value, Mapping) else {}
 
 
+def _map_or_none(value: object) -> Mapping[str, Any] | None:
+    """An object as stored, or ``None`` when the file holds anything else there."""
+    return value if isinstance(value, Mapping) else None
+
+
+def _list(value: object) -> list[Any]:
+    """A JSON array as stored, or empty when the file holds anything else there."""
+    return list(value) if isinstance(value, list | tuple) else []
+
+
 def _int(value: object) -> int | None:
     return value if type(value) is int else None
 
@@ -628,8 +638,8 @@ def _integrity(
     preparation: Mapping[str, Any] | None,
     inputs: Mapping[str, tuple[str, Path]],
 ) -> Integrity:
-    prov = provenance or {}
-    prep = preparation or {}
+    prov = _map(provenance)  # a result refused by the strict reader may hold anything here
+    prep = _map(preparation)
     return Integrity(
         engine_sha=_str(prov.get("engine_sha")),
         engine_dirty=_bool(prov.get("engine_dirty")),
@@ -643,7 +653,7 @@ def _integrity(
 
 def _inputs(data: Mapping[str, Any], folder: Path) -> dict[str, tuple[str, Path]]:
     found: dict[str, tuple[str, Path]] = {}
-    for item in data.get("repro_inputs") or ():
+    for item in _list(data.get("repro_inputs")):
         if isinstance(item, Mapping):
             case_id, sha, rel = item.get("case_id"), item.get("tar_sha256"), item.get("tar_path")
             if isinstance(case_id, str) and isinstance(sha, str) and isinstance(rel, str):
@@ -681,8 +691,8 @@ def _summary_from_result(
         runs_to_first_violation=campaign.runs_to_first_violation if campaign else None,
         violation_capture=campaign.violation_capture if campaign else None,
         integrity=_integrity(data.get("provenance"), data.get("preparation"), inputs),
-        preparation=data.get("preparation"),
-        benign_control=data.get("benign_control"),
+        preparation=_map_or_none(data.get("preparation")),
+        benign_control=_map_or_none(data.get("benign_control")),
         cases=tuple(
             _row_from_verdict(case, inputs, _run_number(case.case_id), known_fixture=known_fixture)
             for case in result.cases
@@ -709,7 +719,7 @@ def _summary_as_stored(
     verdict = data.get("verdict")
     known_fixture = data.get("mode") == ResultMode.FIXTURE_REGRESSION.value
     rows = []
-    for case in data.get("cases") or ():
+    for case in _list(data.get("cases")):
         if not isinstance(case, Mapping) or not isinstance(case.get("case_id"), str):
             continue
         verdict_case = CaseVerdict(
@@ -731,10 +741,12 @@ def _summary_as_stored(
         read_state=ReadState.UNVALIDATED,
         validated=False,
         result_path=path,
-        verdict=Verdict(verdict) if verdict in Verdict.__members__ else None,
+        verdict=Verdict(verdict)
+        if isinstance(verdict, str) and verdict in Verdict.__members__
+        else None,
         label=_str(data.get("label")),
         mode=_str(data.get("mode")),
-        observed_contracts=tuple(str(c) for c in data.get("observed_contracts") or ()),
+        observed_contracts=tuple(str(c) for c in _list(data.get("observed_contracts"))),
         executed=_int(runs.get("executed")),
         errored=_int(runs.get("errored")),
         unjudged_steps=_int(campaign.get("unjudged_steps")),
@@ -747,10 +759,10 @@ def _summary_as_stored(
         terminations=terminations,
         no_extraction_warning=_warning(terminations),
         runs_to_first_violation=_int(campaign.get("runs_to_first_violation")),
-        violation_capture=campaign.get("violation_capture"),
+        violation_capture=_map_or_none(campaign.get("violation_capture")),
         integrity=_integrity(data.get("provenance"), data.get("preparation"), inputs),
-        preparation=data.get("preparation"),
-        benign_control=data.get("benign_control"),
+        preparation=_map_or_none(data.get("preparation")),
+        benign_control=_map_or_none(data.get("benign_control")),
         cases=tuple(rows),
         extras=extras,
         error=error,
@@ -793,7 +805,17 @@ def _read_result(path: Path, ref: RunRef | None = None) -> RunSummary:
         result = from_json_dict(known)
     except (TargetResultError, TypeError, ValueError, KeyError) as refused:
         ref = _ref_with_axes(ref, data)
-        return _summary_as_stored(data, path, ref, extras, f"strict reader refused: {refused}")
+        reason = f"strict reader refused: {refused}"
+        try:
+            return _summary_as_stored(data, path, ref, extras, reason)
+        except Exception as broken:  # noqa: BLE001 -- one bad file must never end a whole scan
+            return RunSummary(
+                ref=ref,
+                read_state=ReadState.UNREADABLE,
+                result_path=path,
+                error=f"{reason}; stored values not readable either "
+                f"({type(broken).__name__}: {broken})",
+            )
     return _summary_from_result(result, data, path, _ref_with_axes(ref, data), extras)
 
 

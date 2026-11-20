@@ -357,19 +357,25 @@ def test_incomplete_or_unjudged_runs_are_unjudged(run: SimpleNamespace) -> None:
 
 REPO = Path(__file__).resolve().parents[1]
 #: The only non-test modules allowed to import the triage module (analysis output, not search).
-TRIAGE_IMPORTERS = {Path("scripts/analysis/triage_violation_case.py")}
+TRIAGE_IMPORTERS = {
+    Path("scripts/analysis/triage_violation_case.py"),
+    # #519: groups finished triage records into bundles (reads records, runs nothing)
+    Path("src/inodefence/triage_summary.py"),
+}
+#: Triage modules: their output (minimum, signature, bundle) must never reach a search.
+TRIAGE_MODULES = ("violation_triage", "triage_summary")
 
 
 def _imports_triage(path: Path) -> bool:
     tree = ast.parse(path.read_text(encoding="utf-8"))
     for node in ast.walk(tree):
         if isinstance(node, ast.Import) and any(
-            alias.name.endswith("violation_triage") for alias in node.names
+            alias.name.endswith(TRIAGE_MODULES) for alias in node.names
         ):
             return True
         if isinstance(node, ast.ImportFrom) and (
-            (node.module or "").endswith("violation_triage")
-            or any(alias.name == "violation_triage" for alias in node.names)
+            (node.module or "").endswith(TRIAGE_MODULES)
+            or any(alias.name in TRIAGE_MODULES for alias in node.names)
         ):
             return True
     return False
@@ -383,7 +389,7 @@ def test_no_engine_search_corpus_or_registered_path_imports_the_triage_module() 
         for root in ("src", "scripts")
         for path in (REPO / root).rglob("*.py")
         if path.relative_to(REPO) not in TRIAGE_IMPORTERS
-        and path.name != "violation_triage.py"
+        and path.name not in ("violation_triage.py", "triage_summary.py")
         and _imports_triage(path)
     )
     assert offenders == []

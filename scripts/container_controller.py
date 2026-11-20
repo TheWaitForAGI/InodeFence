@@ -312,9 +312,10 @@ def run_native_decompress_campaign(
     unchanged. The whole report (incl. ``discovered_violation`` and per-step oracle/feedback) is
     written to evidence; on an infrastructure abort a stub is written so the run is still recorded.
     """
+    from inodefence.campaign_hooks import CampaignHooks
     from inodefence.decompress_effect_campaign import (
         DecompressEffectCampaignConfig,
-        decompress_effect_campaign_report,
+        DecompressReportCollector,
         run_decompress_effect_campaign,
     )
     from inodefence.effect_pipeline_decompress import run_decompress_frame_case
@@ -356,9 +357,11 @@ def run_native_decompress_campaign(
     def produce(case: ArchiveCase):
         return run_decompress_frame_case(case, target)
 
+    collector = DecompressReportCollector(producer=producer, label="demo run")  # #542 streaming
+    hooks = CampaignHooks(on_step=collector.add, retain_steps=False)
     try:
-        result = run_decompress_effect_campaign(minimal_seed_corpus(), produce, config)
-        report = decompress_effect_campaign_report(result, producer=producer, label="demo run")
+        result = run_decompress_effect_campaign(minimal_seed_corpus(), produce, config, hooks=hooks)
+        report = collector.report(result)
         report.update(finish_identity_schedule(target, schedule))
         stats = result.final_stats
         _announce(
@@ -451,13 +454,14 @@ def run_native_oras_go_campaign(
     oracle/feedback) is written to evidence; on an infrastructure abort a stub is written so the run
     is still recorded.
     """
+    from inodefence.campaign_hooks import CampaignHooks
     from inodefence.effect_pipeline_oras_go import oras_go_wire_tar, run_oras_go_frame_case
     from inodefence.generator.minimal import minimal_seed_corpus
     from inodefence.model import ArchiveCase
     from inodefence.mutator import MutationPolicy
     from inodefence.oras_go_effect_campaign import (
         OrasGoEffectCampaignConfig,
-        oras_go_effect_campaign_report,
+        OrasGoReportCollector,
         run_oras_go_effect_campaign,
     )
     from inodefence.targets.oras_go_effect import OrasGoFrameTarget
@@ -494,9 +498,11 @@ def run_native_oras_go_campaign(
     produce, case_records, violation_inputs = oras_go_recording_producer(
         frame_case, wire_tar if artifact_layout else None
     )
+    collector = OrasGoReportCollector(producer=producer, label="demo run")  # #542 streaming
+    hooks = CampaignHooks(on_step=collector.add, retain_steps=False)
     try:
-        result = run_oras_go_effect_campaign(minimal_seed_corpus(), produce, config)
-        report = oras_go_effect_campaign_report(result, producer=producer, label="demo run")
+        result = run_oras_go_effect_campaign(minimal_seed_corpus(), produce, config, hooks=hooks)
+        report = collector.report(result)
         report.update(
             image_id=image,
             oras_go_version=target.provenance.target_version,

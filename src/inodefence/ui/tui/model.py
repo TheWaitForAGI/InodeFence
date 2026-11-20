@@ -22,6 +22,7 @@ from inodefence.app.runs import (
     CaseRow,
     FindingClass,
     Judgment,
+    LaunchActivity,
     ReadState,
     ReplayRecord,
     RunKind,
@@ -29,13 +30,12 @@ from inodefence.app.runs import (
     RunSnapshot,
     Source,
     Verdict,
+    launcher_activity,
 )
 
 #: A ``running`` snapshot older than this is shown as stalled, not active.
 ACTIVE_MAX_AGE_SECONDS = 4 * LIVE_PULL_INTERVAL_SECONDS
 UNKNOWN = "?"
-#: an exploration seen only through its launcher log (no live folder, no result yet)
-RUNNING_NO_LIVE = "running · no live data"
 NONE = "—"
 
 # Cell styles (the app maps them to colours; the text never depends on them).
@@ -208,18 +208,28 @@ def run_state(snapshot: RunSnapshot, now: float) -> Cell:
         if summary.read_state is ReadState.NOT_READY:
             return Cell("result not ready", WARN)
         return Cell(f"result {summary.read_state.value}", WARN)
-    if snapshot.ref.kind is RunKind.EXPLORE and snapshot.ref.run_id is None and summary is None:
-        # listed from its launcher log alone: it has not ended (no runtime record after the log)
-        return Cell(RUNNING_NO_LIVE, ACCENT)
+    launcher = snapshot.launcher_state
+    if launcher is not None:
+        # seen only through its launcher log: an estimate from the log's last write, never "running"
+        age = ago(max(now - launcher.last_write, 0.0))
+        if launcher_activity(launcher.last_write, now) is LaunchActivity.ACTIVE:
+            return Cell(f"launching/running (from launcher log, last write {age})", ACCENT)
+        return Cell(f"no activity (launcher log last written {age})", WARN)
     # No live folder and no result: only node-tar writes running numbers, so this is not "stalled".
     return Cell("no live data", DIM)
 
 
 def is_active(snapshot: RunSnapshot, now: float) -> bool:
-    return run_state(snapshot, now).text in ("running", RUNNING_NO_LIVE)
+    launcher = snapshot.launcher_state
+    if launcher is not None:
+        return launcher_activity(launcher.last_write, now) is LaunchActivity.ACTIVE
+    return run_state(snapshot, now).text == "running"
 
 
 def is_stalled(snapshot: RunSnapshot, now: float) -> bool:
+    launcher = snapshot.launcher_state
+    if launcher is not None:  # quiet past any phase a live launcher allows
+        return launcher_activity(launcher.last_write, now) is LaunchActivity.NO_ACTIVITY
     return run_state(snapshot, now).text.startswith("stalled")
 
 

@@ -21,7 +21,7 @@ pytest.importorskip("textual", reason="Textual is the optional 'tui' extra (in '
 from tests import app_synthetic as syn  # noqa: E402
 
 from inodefence.app.events import RunFollower  # noqa: E402
-from inodefence.app.runs import RunKind, RunRef  # noqa: E402
+from inodefence.app.runs import LAUNCHER_QUIET_MAX_SECONDS, RunKind, RunRef  # noqa: E402
 from inodefence.ui import tui  # noqa: E402
 from inodefence.ui.tui import model  # noqa: E402
 from inodefence.ui.tui.app import InodeFenceTui  # noqa: E402
@@ -173,17 +173,33 @@ async def test_other_targets_show_no_live_data_and_question_marks(tmp_path: Path
     log = out / "runtime" / "explore-launcher-20260101T000000Z-1.log"
     log.parent.mkdir(parents=True)
     log.write_text("==> [run controller]\n", encoding="utf-8")
-    app = _app([out], syn.Clock())
+    app = _app([out], syn.Clock(log.stat().st_mtime + 30))
     async with app.run_test(size=(160, 48)) as pilot:
         await _settle(app, pilot)
         (row,) = _rows(app, "campaigns")
         assert row[0].startswith("pt-explore") and "id at end" in row[0]
-        assert row[1].endswith(model.RUNNING_NO_LIVE)
+        assert "launching/running (from launcher log, last write" in row[1]
         assert row[2] == "?/?" and row[3] == "?" and row[4] == "?"
         assert row[7].startswith("launcher-log est.")
         outcomes = _text(app, "#p-outcomes")
         assert "success" in outcomes and "?" in outcomes and "█" not in outcomes  # no bars
         assert "no live data for this run" in _text(app, "#p-campaign")
+
+
+@_sync
+async def test_a_launcher_only_run_gone_quiet_is_no_activity(tmp_path: Path) -> None:
+    out = tmp_path / "pt-explore"
+    log = out / "runtime" / "explore-launcher-20260101T000000Z-1.log"
+    log.parent.mkdir(parents=True)
+    log.write_text("==> [run controller]\n", encoding="utf-8")
+    clock = syn.Clock(log.stat().st_mtime + LAUNCHER_QUIET_MAX_SECONDS + 600)
+    app = _app([out], clock)
+    async with app.run_test(size=(160, 48)) as pilot:
+        await _settle(app, pilot)
+        (row,) = _rows(app, "campaigns")
+        assert "no activity (launcher log last written" in row[1] and "running" not in row[1]
+        (snapshot,) = app.state.snapshots.values()
+        assert not model.is_active(snapshot, clock()) and model.is_stalled(snapshot, clock())
 
 
 @_sync

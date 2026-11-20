@@ -320,6 +320,10 @@ wheel로만 설치하면(클론 없음, `INODEFENCE_HOME` 없음) 대시보드�
 "target registry not readable · no repository root configured"를 보여 줍니다. 대상 목록은 클론에서 읽기 때문이며,
 위 [설치](#설치) 표의 다른 명령과 같은 규칙입니다. 클론에서 설치하거나 `INODEFENCE_HOME=<클론>`을 주세요.
 
+실행 중 표시의 한계: 결과 ID가 아직 없는 탐색은 런처 로그로만 보이고(마지막 쓰기 시각으로 추정한 "running"/"no activity" 표시),
+`--verbose`로(또는 드라이버를 직접) 시작한 python-tarfile·decompress·oras-go 탐색은 런처 로그를 남기지 않으므로 끝날 때까지
+이 화면에 보이지 않습니다. 끝나면 그 결과로 나타납니다.
+
 종료 코드: Ctrl-C로 멈추면 0. FastAPI·uvicorn이 없거나(설치 안내 한 줄) 서버를 시작하지 못하면(포트 사용 중 등, 한 줄)
 3입니다.
 
@@ -481,6 +485,10 @@ replay를 돌리는 조작은 없고, 아무 파일도 쓰지 않습니다. 기�
 | Campaigns | 탐색 실행(상태, 실행 수/예산, 속도, 위반·미판정 수, 갱신 나이, 숫자의 출처)과 verify 셀 |
 | Findings | 위반 후보(C0·C1·C2, 분류, 종료 상태, replay 결론과 같은 계약 재현 수/판정된 라운드 수, 폴더 위치) |
 | Artifacts | 고른 실행의 `result.json`, 판정, 엔진·이미지 해시, 저장된 입력의 SHA-256과 위치, replay 폴더, 런처 로그 |
+
+실행 중 표시의 한계: 결과 ID가 아직 없는 탐색은 런처 로그로만 보이고(마지막 쓰기 시각으로 추정한 "running"/"no activity" 표시),
+`--verbose`로(또는 드라이버를 직접) 시작한 python-tarfile·decompress·oras-go 탐색은 런처 로그를 남기지 않으므로 끝날 때까지
+이 화면에 보이지 않습니다. 끝나면 그 결과로 나타납니다.
 
 키: `1`–`5` 화면, `↑`/`↓` 행 이동, `Enter` 상세(위반 후보) 또는 그 실행의 Artifacts, `Esc` 닫기, `r` 다시 읽기,
 `?` 도움말, `q` 종료. 화면 아래 줄들은 실행 폴더의 변화를 이벤트로 보여 줍니다.

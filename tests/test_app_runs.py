@@ -611,3 +611,76 @@ def test_the_quiet_limit_follows_the_launchers_build_deadline() -> None:
     match = re.search(r"^DEADLINE_BUILD=(\d+)", script.read_text(encoding="utf-8"), re.M)
     assert match is not None
     assert runs.LAUNCHER_QUIET_MAX_SECONDS == int(match[1]) + 120
+
+
+_SHAPE_KEYS = ("provenance", "preparation", "benign_control", "repro_inputs", "cases",
+               "observed_contracts", "campaign", "runs", "axes",
+               "verdict", "label", "mode")  # fmt: skip
+
+
+@pytest.mark.parametrize("key", _SHAPE_KEYS)
+@pytest.mark.parametrize("value", ["broken", 7, ["x"], None, {"a": 1}])
+def test_a_wrongly_shaped_section_never_raises(tmp_path: Path, key: str, value: object) -> None:
+    # QA: "provenance": "broken" raised AttributeError and took the whole web run list down (500)
+    path = _fixture_cell(tmp_path, termination=None)
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data[key] = value
+    path.write_text(json.dumps(data), encoding="utf-8")
+    summary = runs.read_result(path)
+    assert summary.read_state in (ReadState.OK, ReadState.UNVALIDATED, ReadState.UNREADABLE)
+    if summary.read_state is not ReadState.OK:
+        assert summary.error
+    snapshot = runs.read_run(runs.RunRef(runs.RunKind.VERIFY, path.parent, path.parent.name))
+    assert snapshot.ref.root == path.parent
+
+
+def test_a_broken_provenance_reads_as_stored_with_unknown_integrity(tmp_path: Path) -> None:
+    path = _fixture_cell(tmp_path, termination=None)
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["provenance"] = "broken"
+    path.write_text(json.dumps(data), encoding="utf-8")
+    summary = runs.read_result(path)
+    assert summary.read_state is ReadState.UNVALIDATED and summary.integrity is not None
+    assert summary.integrity.engine_sha is None and summary.integrity.image_id is None
+    assert len(summary.fixture_violations) == 1  # still classified by mode
+
+
+def test_one_broken_cell_does_not_hide_the_others(tmp_path: Path) -> None:
+    good = _fixture_cell(tmp_path, termination=None)
+    bad = tmp_path / "verify" / "node-tar-7.5.3" / "result.json"
+    bad.parent.mkdir(parents=True)
+    data = json.loads(good.read_text(encoding="utf-8"))
+    data["provenance"] = "broken"
+    data["preparation"] = 3
+    bad.write_text(json.dumps(data), encoding="utf-8")
+    found = [x.ref for x in runs.discover_runs([tmp_path / "verify"]) if x.ref]
+    assert {r.run_id for r in found} == {"node-tar-7.5.2", "node-tar-7.5.3"}
+    states = {r.run_id: runs.read_run(r).summary.read_state for r in found}  # type: ignore[union-attr]
+    assert states["node-tar-7.5.2"] is ReadState.OK
+    assert states["node-tar-7.5.3"] is ReadState.UNVALIDATED
+
+
+def test_an_unforeseen_error_in_one_run_is_that_runs_unreadable_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = _fixture_cell(tmp_path, termination=None)
+    ref = runs.RunRef(runs.RunKind.VERIFY, path.parent, path.parent.name)
+
+    def explode(*_: object, **__: object) -> None:
+        raise RuntimeError("unforeseen")
+
+    monkeypatch.setattr(runs, "read_result", explode)
+    snapshot = runs.read_run(ref, now=1.0)
+    assert snapshot.ref is ref and snapshot.summary is not None
+    assert snapshot.summary.read_state is ReadState.UNREADABLE
+    assert snapshot.read_errors and "RuntimeError: unforeseen" in snapshot.read_errors[0]
+
+
+def test_a_folder_that_breaks_discovery_is_listed_not_fatal(tmp_path: Path) -> None:
+    _fixture_cell(tmp_path, termination=None)  # tmp/verify/node-tar-7.5.2
+    odd = tmp_path / "verify" / "odd-out"
+    _launcher_log(odd, stamp="20261399T999999Z")  # matches the name pattern, not a real time
+    listings = runs.discover_runs([tmp_path / "verify"])
+    assert [x.ref.run_id for x in listings if x.ref] == ["node-tar-7.5.2"]
+    (broken,) = [x for x in listings if x.ref is None]
+    assert broken.path == odd and broken.read_state is ReadState.UNREADABLE and broken.error

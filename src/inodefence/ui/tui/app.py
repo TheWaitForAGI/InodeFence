@@ -626,6 +626,9 @@ def campaign_view(
         graph.append(line, style=PALETTE["muted"])
         if not live:
             graph.append("\n(only node-tar writes running numbers)", style=PALETTE["muted"])
+        if snapshot.launcher_state is not None:  # the estimate, with where it comes from
+            estimate = model.run_state(snapshot, now)
+            graph.append(f"\nstate (estimated): {estimate.text}", style=PALETTE["muted"])
     else:
         rows = GRAPH_ROWS_NARROW if compact else GRAPH_ROWS
         top, low = max(known), min(known)
@@ -649,6 +652,8 @@ def campaign_view(
         if label == "runs":
             continue
         side.append(f"{label:<9}", style=PALETTE["muted"])
+        if label == "state" and snapshot is not None:  # the narrow column: the short label
+            cell = model.run_state_short(snapshot, now)
         side.append_text(badge(cell) if label == "state" else styled(cell))
         side.append("\n")
     p = snapshot.progress if snapshot else None

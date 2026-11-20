@@ -177,13 +177,52 @@ async def test_other_targets_show_no_live_data_and_question_marks(tmp_path: Path
     async with app.run_test(size=(160, 48)) as pilot:
         await _settle(app, pilot)
         (row,) = _rows(app, "campaigns")
-        assert row[0].startswith("pt-explore") and "id at end" in row[0]
-        assert "launching/running (from launcher log, last write" in row[1]
+        assert row[0] == "(no id yet) pt-explore"
+        assert row[1].endswith(model.EST_ACTIVE)  # short in the table
         assert row[2] == "?/?" and row[3] == "?" and row[4] == "?"
         assert row[7].startswith("launcher-log est.")
         outcomes = _text(app, "#p-outcomes")
         assert "success" in outcomes and "?" in outcomes and "█" not in outcomes  # no bars
-        assert "no live data for this run" in _text(app, "#p-campaign")
+        campaign = _text(app, "#p-campaign")
+        assert "no live data for this run" in campaign
+        assert "launching/running (from launcher log, last write" in campaign  # long: panel
+        assert "—@—" not in campaign and "@" not in campaign  # target unknown: one "—"
+        (overview,) = _rows(app, "runs")
+        assert overview[1].endswith(model.EST_ACTIVE) and overview[2] == "?/?"
+        assert overview[3] == "?"  # progress and candidates keep their columns
+
+
+def test_an_unknown_candidate_count_leaves_needs_repro_unknown(tmp_path: Path) -> None:
+    out = tmp_path / "pt-explore"
+    log = out / "runtime" / "explore-launcher-20260101T000000Z-1.log"
+    log.parent.mkdir(parents=True)
+    log.write_text("==> [run controller]\n", encoding="utf-8")
+    from inodefence.app.runs import discover_runs, read_run
+
+    (ref,) = [x.ref for x in discover_runs([out]) if x.ref]
+    snapshot = read_run(ref, now=log.stat().st_mtime + 5)
+    lines = dict(model.oracle_lines(model.DashboardState(roots=(out,)), snapshot))
+    assert lines["candidates"].text == "?" and lines["needs repro check"].text == "?"
+
+
+@_sync
+async def test_the_overview_runs_table_keeps_every_column_at_140x40(tmp_path: Path) -> None:
+    # ORCH (capture r2-tui-A-1): long state words pushed progress and cand. out of the table
+    from textual.widgets import DataTable
+
+    out = syn.explore_out(tmp_path / "a")
+    syn.live_run(out, syn.run_id(1), [syn.step(0), syn.step(1)], close="finished")
+    launch = tmp_path / "launch-fresh-python-tarfile-out"
+    log = launch / "runtime" / "explore-launcher-20261120T021743Z-1654134.log"
+    log.parent.mkdir(parents=True)
+    log.write_text("==> [preflight]\n", encoding="utf-8")
+    for age in (30.0, LAUNCHER_QUIET_MAX_SECONDS + 600):
+        app = _app([tmp_path], syn.Clock(log.stat().st_mtime + age))
+        async with app.run_test(size=(140, 40)) as pilot:
+            await _settle(app, pilot)
+            table = app.query_one("#runs-table", DataTable)
+            widths = [c.get_render_width(table) for c in table.columns.values()]
+            assert len(widths) == 4 and sum(widths) <= table.size.width, (age, widths)
 
 
 @_sync
@@ -197,7 +236,8 @@ async def test_a_launcher_only_run_gone_quiet_is_no_activity(tmp_path: Path) -> 
     async with app.run_test(size=(160, 48)) as pilot:
         await _settle(app, pilot)
         (row,) = _rows(app, "campaigns")
-        assert "no activity (launcher log last written" in row[1] and "running" not in row[1]
+        assert row[1].endswith(model.EST_QUIET) and "running" not in row[1]
+        assert "no activity (launcher log last written" in _text(app, "#p-campaign")
         (snapshot,) = app.state.snapshots.values()
         assert not model.is_active(snapshot, clock()) and model.is_stalled(snapshot, clock())
 

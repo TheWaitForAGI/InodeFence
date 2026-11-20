@@ -40,13 +40,21 @@ from pathlib import Path
 from typing import Any
 
 from inodefence.drivers.decompress import adapter as dt
+from inodefence.drivers.explore_result import (
+    with_identity_checks,
+    with_per_case_identity_marker,
+)
 from inodefence.drivers.launcher import launcher_path, run_launcher
 from inodefence.drivers.repo import code_checkout, require_repository_or_exit
 from inodefence.drivers.run_target import (
+    MUTATION_POLICY_ENV,
     ExploreOptions,
     ExploreOutcome,
     PreparedTargetImage,
     RunCell,
+    drop_inherited_mutation_policy,
+    drop_inherited_search_policy,
+    requested_identity_check_every,
 )
 from inodefence.drivers.runtime.hooks import LaunchArtifacts
 from inodefence.feedback import EffectSearchPolicy
@@ -343,8 +351,10 @@ def run_controller(
         "DEMO_SEED": str(seed),
         "DEMO_BUDGET": str(budget),
     }
+    drop_inherited_mutation_policy(env)
+    drop_inherited_search_policy(env)
     if mutation_policy:
-        env["DEMO_MUTATION_POLICY"] = mutation_policy
+        env[MUTATION_POLICY_ENV] = mutation_policy
     if search_policy:
         env["DEMO_POLICY"] = search_policy
     path = controller_report_path(evidence_dir, run_id)
@@ -415,6 +425,10 @@ def explore(prepared: PreparedTargetImage, options: ExploreOptions) -> ExploreOu
         seed=options.seed,
         budget=options.budget,
     )
+    # FAST (#536): the loop's identity-probe record; STRICT: unchanged.
+    result = with_identity_checks(result, report, requested_identity_check_every(options))
+    # D065: FAST here keeps the rebuild skip only; the result says the probe was per case.
+    result = with_per_case_identity_marker(result, getattr(options, "runtime", None))
     summary.update(
         requested=prepared.requested,
         worker_check=check["reason"],

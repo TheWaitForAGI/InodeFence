@@ -9,22 +9,31 @@ report (``case_records`` + ``violation_inputs``) and wants the same common
 from __future__ import annotations
 
 import base64
+import dataclasses
 from hashlib import sha256
 from pathlib import Path
 
 from inodefence.drivers.run_target import (
     DEFAULT_MAX_UNJUDGED_RATIO,
+    FAST_PER_CASE_IDENTITY,
     PreparedTargetImage,
     engine_provenance,
 )
-from inodefence.live_exploration import list_violation_cases
+from inodefence.drivers.runtime.policy import RuntimeProfile
+from inodefence.evaluation.rds import VOCABULARY_MUTATION_POLICY, VocabularyMode
+from inodefence.live_exploration import list_violation_cases, read_progress
 from inodefence.target_result import (
+    FAST_ACCEPTANCE_INTERVAL_ON_UNMEASURED_SCOPE,
+    FAST_ACCEPTANCE_PASSED,
     JUDGED,
+    NODE_TAR_ACCEPTED_FAST_SCOPE,
     CampaignInfo,
     CaseVerdict,
     ResultMode,
     TargetAxes,
     TargetResult,
+    in_accepted_scope,
+    per_case_identity_marker,
     repro_input,
 )
 
@@ -39,6 +48,7 @@ def build_campaign_result(
     budget: int,
     max_unjudged_ratio: float | None = DEFAULT_MAX_UNJUDGED_RATIO,
     live_dir: Path | None = None,
+    mutation_policy: str | None = None,
 ) -> tuple[TargetResult, dict[str, bytes]]:
     """Convert the loop report into the common campaign result, plus the violating TARs to save.
 
@@ -56,6 +66,14 @@ def build_campaign_result(
     dropped at the per-fingerprint cap) then rides in the campaign block. Without ``live_dir``
     (non-streaming, other targets, or a recorder-less test) the report's own
     ``violation_inputs`` are used, unchanged.
+
+    ``mutation_policy`` is recorded as given; the caller passes it only after checking the loop
+    ran it. Only such a run (the v2 grammar policy) can have build-invalid runs -- the builder
+    could not represent the child, so nothing was extracted -- and for it the count is required:
+    see :func:`build_invalid_runs` (streaming report) and :func:`per_case_build_invalid_runs`
+    (a ``case_records`` report: python-tarfile). ``campaign.build_invalid`` is then written when
+    it is > 0. A run without ``mutation_policy`` is unchanged (no count is derived, the key never
+    appears).
     """
     aggregate = report.get("aggregate")
     disk_sourced = aggregate is not None and live_dir is not None
@@ -131,6 +149,23 @@ def build_campaign_result(
             terminations=aggregate.get("terminations"),
             max_unjudged_ratio=max_unjudged_ratio,
             violation_capture=report.get("violation_capture"),
+            build_invalid=(
+                build_invalid_runs(aggregate, live_dir) or None
+                if mutation_policy is not None
+                else None
+            ),
+            mutation_policy=mutation_policy,
+        )
+    elif mutation_policy is not None:
+        executed, build_invalid = per_case_build_invalid_runs(report)
+        campaign = CampaignInfo(
+            seed=seed,
+            budget=budget,
+            runs_to_first_violation=first_violation,
+            runs_executed=executed,
+            max_unjudged_ratio=max_unjudged_ratio,
+            build_invalid=build_invalid or None,
+            mutation_policy=mutation_policy,
         )
     else:
         campaign = CampaignInfo(
@@ -150,6 +185,195 @@ def build_campaign_result(
         campaign=campaign,
     )
     return result, tar_files
+
+
+class BuildInvalidUnknownError(RuntimeError):
+    """A ``--mutation-policy`` run whose build-invalid count cannot be established exactly.
+
+    A ``RuntimeError``: the run happened, so the explore drivers report it as ERROR (exit 2) and
+    publish no result -- instead of leaving the key out, which would put build-invalid runs back
+    into the un-judged ratio's denominator and loosen the ERROR ceiling without saying so.
+    """
+
+
+def build_invalid_runs(aggregate: dict, live_dir: Path | None = None) -> int:
+    """The exact build-invalid count of a streaming run: ``runs_executed - sum(terminations)``.
+
+    The loop's aggregate counts one termination per executed extraction, and a build-invalid run
+    never reaches the extractor, so the difference is exact (QA check 33-B). When the live folder
+    has a final snapshot covering the same runs, its own ``build_invalid`` count must agree.
+    Anything that does not add up raises :class:`BuildInvalidUnknownError`.
+    """
+    runs = aggregate.get("runs_executed")
+    terminations = aggregate.get("terminations")
+    if (
+        type(runs) is not int
+        or not isinstance(terminations, dict)
+        or not all(type(n) is int and n >= 0 for n in terminations.values())
+    ):
+        raise BuildInvalidUnknownError(
+            "build-invalid count unknown: the loop report's aggregate has no runs/terminations; "
+            "no result written"
+        )
+    count = runs - sum(terminations.values())
+    if count < 0:
+        raise BuildInvalidUnknownError(
+            f"build-invalid count unknown: {sum(terminations.values())} terminations exceed "
+            f"{runs} runs; no result written"
+        )
+    progress = read_progress(live_dir) if live_dir is not None else None
+    if progress is not None and progress.get("runs_executed") == runs:
+        block = progress.get("build_invalid")
+        live = block.get("steps", 0) if isinstance(block, dict) else 0
+        if live != count:
+            raise BuildInvalidUnknownError(
+                f"build-invalid count unknown: the loop report gives {count}, the live snapshot "
+                f"{live}; no result written"
+            )
+    return count
+
+
+def per_case_build_invalid_runs(report: dict) -> tuple[int, int]:
+    """``(steps, build-invalid)`` of a per-case report: ``executed - len(case_records)``.
+
+    A ``case_records`` report (python-tarfile) has one record per extracted step and the loop's
+    step count in ``executed``; a build-invalid step is never extracted, so it has no record
+    and the difference is exact. A report without that count, or whose records outnumber it,
+    raises :class:`BuildInvalidUnknownError`.
+    """
+    executed = report.get("executed")
+    records = report.get("case_records")
+    if type(executed) is not int or not isinstance(records, list):
+        raise BuildInvalidUnknownError(
+            "build-invalid count unknown: a --mutation-policy run produced a per-case report "
+            "without its step count; no result written"
+        )
+    count = executed - len(records)
+    if count < 0:
+        raise BuildInvalidUnknownError(
+            f"build-invalid count unknown: {len(records)} case records exceed {executed} steps; "
+            "no result written"
+        )
+    return executed, count
+
+
+def check_ran_mutation_policy(report: dict, requested: str) -> None:
+    """The loop report must show it ran ``requested`` (its ``vocabulary_mode``), or no result.
+
+    The result records the policy only after this check, so ``campaign.mutation_policy`` is what
+    the loop ran, not just what was asked for. A mismatch is an ERROR (exit 2): the run happened.
+    """
+    mode = report.get("vocabulary_mode")
+    try:
+        ran = VOCABULARY_MUTATION_POLICY[VocabularyMode(mode)].value
+    except (ValueError, KeyError):
+        ran = None
+    if ran != requested:
+        raise RuntimeError(
+            f"the loop ran vocabulary mode {mode!r} (mutation policy {ran!r}), requested "
+            f"{requested!r}; no result written"
+        )
+
+
+class IdentityRecordError(RuntimeError):
+    """A FAST run whose loop report does not show the identity probe schedule it asked for.
+
+    A ``RuntimeError``: the run happened, so the drivers report ERROR (exit 2) and publish no
+    result rather than one that does not say how often the image identity was probed.
+    """
+
+
+def with_identity_checks(
+    result: TargetResult, report: dict, identity_check_every: int | None
+) -> TargetResult:
+    """``result`` with the loop's identity-probe record when the run asked for FAST probing.
+
+    ``identity_check_every`` is the interval the session requested (``None``: STRICT, a probe
+    before every case; ``result`` is returned unchanged and its bytes are today's). Requested,
+    the report's ``identity_checks`` record must be there with the same interval.
+    """
+    if identity_check_every is None:
+        return result
+    record = report.get("identity_checks")
+    if not isinstance(record, dict) or record.get("interval") != identity_check_every:
+        raise IdentityRecordError(
+            f"the run asked for an image identity probe every {identity_check_every} cases but "
+            f"its loop report records {record!r}; no result written"
+        )
+    assert result.campaign is not None  # every exploration result is a campaign
+    return dataclasses.replace(
+        result, campaign=dataclasses.replace(result.campaign, identity_checks=dict(record))
+    )
+
+
+def with_per_case_identity_marker(result: TargetResult, session: object) -> TargetResult:
+    """D065: ``result`` with the per-case marker when the run was FAST without an interval.
+
+    That is FAST on a target of ``run_target.FAST_PER_CASE_IDENTITY`` (the explore driver drops
+    the interval for them); the marker carries that target's FAST acceptance state. Any other
+    run -- STRICT, or a FAST run with an interval -- is returned unchanged. A FAST run without an
+    interval on a target outside the table cannot be described: no result (RuntimeError).
+    """
+    policy = getattr(session, "policy", None)
+    if (
+        policy is None
+        or policy.profile is not RuntimeProfile.FAST
+        or policy.identity_check_every is not None
+    ):
+        return result
+    assert result.campaign is not None  # every exploration result is a campaign
+    target = getattr(session, "target", None)
+    state = FAST_PER_CASE_IDENTITY.get(str(target))
+    if state is None:
+        raise RuntimeError(
+            f"FAST without an identity-probe interval on {target!r}, which has no D065 entry; "
+            "no result written"
+        )
+    marker = per_case_identity_marker(str(target), state)
+    return dataclasses.replace(
+        result, campaign=dataclasses.replace(result.campaign, identity_checks=marker)
+    )
+
+
+#: Targets whose FAST keeps the D064 interval and whose result must say which scope was measured.
+ACCEPTED_FAST_SCOPE: dict[str, dict] = {"node-tar": NODE_TAR_ACCEPTED_FAST_SCOPE}
+
+
+def with_fast_acceptance_scope(
+    result: TargetResult, session: object, *, version: str, policy: str, budget: int
+) -> TargetResult:
+    """W4 Q2 (ii): a FAST run WITH the interval on a target of :data:`ACCEPTED_FAST_SCOPE`
+    records ``fast_acceptance`` (``passed`` inside the measured scope, else
+    ``interval_on_unmeasured_scope``) and the measured ``acceptance_scope`` next to its probe
+    record. The interval stays on outside the scope (no version gating). Other runs unchanged.
+    """
+    run_policy = getattr(session, "policy", None)
+    scope = ACCEPTED_FAST_SCOPE.get(str(getattr(session, "target", None)))
+    if (
+        scope is None
+        or run_policy is None
+        or run_policy.profile is not RuntimeProfile.FAST
+        or run_policy.identity_check_every is None
+    ):
+        return result
+    assert result.campaign is not None  # every exploration result is a campaign
+    checks = result.campaign.identity_checks
+    if checks is None:
+        raise IdentityRecordError("a FAST run with an interval has no probe record to label")
+    if not scope.get("counted_seeds") or scope.get("rule_sha") is None:
+        raise IdentityRecordError(
+            "the FAST acceptance scope is not filled yet (counted_seeds, "
+            "rule_sha); no result written"
+        )
+    state = (
+        FAST_ACCEPTANCE_PASSED
+        if in_accepted_scope(scope, version, policy, budget)
+        else FAST_ACCEPTANCE_INTERVAL_ON_UNMEASURED_SCOPE
+    )
+    labeled = {**checks, "fast_acceptance": state, "acceptance_scope": dict(scope)}
+    return dataclasses.replace(
+        result, campaign=dataclasses.replace(result.campaign, identity_checks=labeled)
+    )
 
 
 class ResultExistsError(FileExistsError, ValueError):

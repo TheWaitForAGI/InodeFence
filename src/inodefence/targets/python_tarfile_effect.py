@@ -326,7 +326,18 @@ def _build_trace(
     root: Path,
     extraction_root: Path,
     mechanism: str = PYTHON_TARFILE_MECHANISM,
+    *,
+    worker_members: int | None,
 ) -> EffectEventTrace:
+    """Build the effect trace of one python-tarfile run.
+
+    ``worker_members`` is how many archive members the extracting side itself reported having
+    processed (the contained worker's final ``members`` line; the in-process path's
+    ``getmembers()`` count), or ``None`` when that report is missing or unreadable. A success is
+    complete only when every entry succeeded AND that count equals the entries the reader expects
+    (#533): "complete" means the worker and the reader agree on what was processed. A zero-entry
+    archive is therefore complete exactly when the worker itself reports ``members: 0``.
+    """
     # ``archive_entries`` is the FULL declared case structure (every entry by ordinal
     # + path, duplicates and order preserved), NOT only the entries reached before an
     # early rejection -- the EffectRunResult identity invariant requires it to equal
@@ -388,13 +399,14 @@ def _build_trace(
         ExecutionStatus.TIMED_OUT: EffectTargetTermination.TIMED_OUT,
     }[status]
 
-    # A clean success (all entries) or a rejection with at least one observed entry is
-    # a complete observation up to the target's stop; everything else (failure, timeout,
-    # rejection before any entry) is observer-incomplete and fails closed.
-    all_entries = len(succeeded) == len(references) and bool(references)
-    if (status == ExecutionStatus.SUCCESS and all_entries) or (
-        status == ExecutionStatus.REJECTED and seq > 0
-    ):
+    # A clean success (all entries, and the worker's own member count agrees -- zero included)
+    # or a rejection with at least one observed entry is a complete observation up to the
+    # target's stop; everything else (failure, timeout, rejection before any entry, a success
+    # whose member report is missing or disagrees) is observer-incomplete and fails closed.
+    all_entries = len(succeeded) == len(references)
+    if (
+        status == ExecutionStatus.SUCCESS and all_entries and worker_members == len(references)
+    ) or (status == ExecutionStatus.REJECTED and seq > 0):
         completeness = EffectStreamCompleteness.COMPLETE
     else:
         completeness = EffectStreamCompleteness.INCOMPLETE
@@ -406,7 +418,9 @@ def _build_trace(
             )
         )
 
-    last = seq - 1 if seq else 0
+    # -1 = nothing produced (the model's empty stream; node-tar's reader uses the same). A
+    # complete zero-entry success has no event points, so 0 would claim one that never existed.
+    last = seq - 1
     stream_digest = sha256(
         f"{mechanism}:{status.value}:{len(succeeded)}:{after.phase.value}".encode()
     ).hexdigest()
@@ -430,19 +444,25 @@ def _build_trace(
 
 def _extract_in_process(
     target: PythonTarfileEffectTarget, archive_path: Path, extraction_root: Path, case: ArchiveCase
-) -> tuple[tuple[ArchiveEntryReference, ...], tuple[_EntryExtraction, ...], ExecutionResult]:
+) -> tuple[
+    tuple[ArchiveEntryReference, ...], tuple[_EntryExtraction, ...], ExecutionResult, int | None
+]:
+    """Extract in this process; also returns how many members ``tarfile`` itself read (``None``
+    when the archive could not be read), the in-process counterpart of the worker's report."""
     references = tuple(
         ArchiveEntryReference(index, entry.path, entry.entry_type, entry.link_target)
         for index, entry in enumerate(case.entries)
     )
     results: list[_EntryExtraction] = []
     status, code, stderr = ExecutionStatus.SUCCESS, 0, ""
+    member_count: int | None = None
     command = (sys.executable, "tarfile.extractall", f"filter={target.policy}")
     started = perf_counter()
     try:
         with tarfile.open(archive_path, mode="r:") as archive:
             archive.errorlevel = 2
             members = archive.getmembers()
+            member_count = len(members)
             if len(members) != len(references):
                 status, code, stderr = (
                     ExecutionStatus.FAILED,
@@ -490,7 +510,7 @@ def _extract_in_process(
         stderr[:200],
         duration_seconds=elapsed,
     )
-    return references, tuple(results), execution
+    return references, tuple(results), execution, member_count
 
 
 def run_python_tarfile_effect_case(
@@ -529,7 +549,7 @@ def run_python_tarfile_effect_case(
     with disposable_sandbox(sentinels) as sandbox:
         sandbox.archive_path.write_bytes(archive)
         before = capture_state(sandbox.root, SnapshotPhase.BEFORE, sandbox.protected_paths)
-        references, extractions, execution = _extract_in_process(
+        references, extractions, execution, member_count = _extract_in_process(
             target, sandbox.archive_path, sandbox.extraction_root, case
         )
         after = capture_state(sandbox.root, SnapshotPhase.AFTER, sandbox.protected_paths)
@@ -541,6 +561,7 @@ def run_python_tarfile_effect_case(
             execution.status,
             sandbox.root,
             sandbox.extraction_root,
+            worker_members=member_count,
         )
         base = RunResult(
             case,

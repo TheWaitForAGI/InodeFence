@@ -23,7 +23,7 @@ import math
 import re
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -33,6 +33,7 @@ from inodefence.model.isolation import ArtifactDigest, IsolationProvenance
 from inodefence.model.provenance import TargetProvenance
 
 from ._paths import validate_run_paths
+from .identity_schedule import IdentitySchedule
 from .isolated import identify_image
 
 PYTHON = "/usr/local/bin/python"
@@ -124,6 +125,8 @@ class PythonTarfileContainedTarget:
     tarfile_sha256: str
     worker_sha256: str
     timeout_seconds: float = 10.0
+    #: None = STRICT (identity probe before every archive). FAST exploration only (#536).
+    identity_schedule: IdentitySchedule | None = field(default=None, compare=False)
 
     def __post_init__(self) -> None:
         if not isinstance(self.backend, ExecutionBackend):
@@ -207,6 +210,13 @@ class PythonTarfileContainedTarget:
         if seen != (self.python_version, self.tarfile_sha256, self.worker_sha256):
             raise RuntimeError("python-tarfile image identity changed after setup")
 
+    def verify_identity_at_end(self) -> None:
+        """FAST: the closing identity probe; raises on a mismatch. STRICT: nothing to do."""
+        if self.identity_schedule is None:
+            return
+        self._verify_identity()
+        self.identity_schedule.end_checked = True
+
     def capture_isolation(self) -> IsolationProvenance:
         captured = self.backend.capture_isolation(self.image_id)
         self._verify_identity()
@@ -252,7 +262,8 @@ class PythonTarfileContainedTarget:
         self, archive_path: Path, extraction_root: Path
     ) -> Iterator[Callable[[], PythonTarfileCapture]]:
         validate_run_paths(archive_path, extraction_root)
-        self._verify_identity()
+        if self.identity_schedule is None or self.identity_schedule.due():
+            self._verify_identity()
         command = self.command(archive_path, extraction_root)
         request = ContainerRequest(
             self.image_id, command, extraction_root.parent, self.timeout_seconds

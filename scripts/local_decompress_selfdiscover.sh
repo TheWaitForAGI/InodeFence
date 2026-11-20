@@ -146,5 +146,6 @@ DEMO_ARGS=()
 [ -n "${DEMO_BUDGET:-}" ] && DEMO_ARGS+=(--budget "$DEMO_BUDGET")
 [ -n "${DEMO_MUTATION_POLICY:-}" ] && DEMO_ARGS+=(--mutation-policy "$DEMO_MUTATION_POLICY")
 [ -n "${DEMO_POLICY:-}" ] && DEMO_ARGS+=(--policy "$DEMO_POLICY")
+[ -n "${DEMO_IDENTITY_CHECK_EVERY:-}" ] && DEMO_ARGS+=(--identity-check-every "$DEMO_IDENTITY_CHECK_EVERY")
 host --image "$IF_DECOMPRESS_IMAGE" --evidence "$CONTROLLER_EVIDENCE" \
   ${DEMO_ARGS[@]+"${DEMO_ARGS[@]}"} decompress-effect-campaign

@@ -16,6 +16,7 @@ passed; without a session the call is the plain one.
 
 from __future__ import annotations
 
+import sys
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -86,6 +87,32 @@ def run_launcher(
     run leaves its evidence, for the diagnostics); the call is the same.
     Returns whatever ``runner`` returns (a ``CompletedProcess``).
     """
+    env = drop_inherited_identity_check(env, session)
     if session is not None:
         return session.launch(script, args, runner=runner, env=env, artifacts=artifacts, **kwargs)
     return runner(["bash", str(script), *args], env=env, **kwargs)
+
+
+#: The launcher variable that reduces the targets' image identity probes (#536 option 1).
+IDENTITY_CHECK_ENV = "DEMO_IDENTITY_CHECK_EVERY"
+
+
+def drop_inherited_identity_check(
+    env: dict[str, str], session: RuntimeSession | None
+) -> dict[str, str]:
+    """``env`` without the caller's own ``DEMO_IDENTITY_CHECK_EVERY`` (one stderr warning line).
+
+    A STRICT run or a replay must not probe the image identity less because of an inherited
+    variable; only a FAST exploration session sets it, from its policy
+    (:meth:`RuntimeSession.launch`). Without an inherited value ``env`` is returned as is.
+    """
+    inherited = env.get(IDENTITY_CHECK_ENV)
+    if inherited is None:
+        return env
+    prefix = session.prefix if session is not None else "INODEFENCE"
+    print(
+        f"{prefix} WARNING: environment variable {IDENTITY_CHECK_ENV}={inherited} is ignored; "
+        "the image identity probe interval comes from --profile fast only",
+        file=sys.stderr,
+    )
+    return {key: value for key, value in env.items() if key != IDENTITY_CHECK_ENV}

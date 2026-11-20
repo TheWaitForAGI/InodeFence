@@ -54,6 +54,7 @@ from inodefence.sentinel_set import (
     generate_sentinel_set,
 )
 from inodefence.target_result import JUDGED, RUN_ERROR
+from inodefence.targets.identity_schedule import apply_identity_schedule, finish_identity_schedule
 from inodefence.targets.node_tar_effect import (
     NativeEffectProfile,
     NodeTarEffectTarget,
@@ -288,6 +289,7 @@ DEMO_FORWARDED_ARGUMENTS = (
     "runtime_version",
     "extraction_filter",
     "oras_go_artifact_layout",
+    "identity_check_every",
 )
 
 
@@ -295,6 +297,7 @@ def add_demo_arguments(parser: argparse.ArgumentParser) -> None:
     """effect-demo(s) only; defaults apply inside the reports (P2, 123, 20, policy)."""
     parser.add_argument("--seed", type=int)
     parser.add_argument("--budget", type=int)
+    parser.add_argument("--identity-check-every", type=int)  # FAST explore only (#536)
     parser.add_argument("--policy", choices=tuple(policy.value for policy in EffectSearchPolicy))
     parser.add_argument(
         "--mutation-policy", choices=tuple(policy.value for policy in MutationPolicy)
@@ -411,6 +414,8 @@ def demo_options(args: argparse.Namespace) -> dict:
         options["mutation_policy"] = MutationPolicy(args.mutation_policy)
     if getattr(args, "observer_integrity_policy", None) == "invalid-continue":
         options["observer_integrity_continue"] = True
+    if getattr(args, "identity_check_every", None) is not None:
+        options["identity_check_every"] = args.identity_check_every
     return options
 
 
@@ -627,6 +632,7 @@ def exploration_demo_report(
     live_dir: Path | None = None,
     engine_commit: str | None = None,
     stream: bool = True,
+    identity_check_every: int | None = None,
 ) -> dict[str, object]:
     """Run the state-aware effect loop on an arbitrary caller-prepared node-tar image.
 
@@ -652,6 +658,7 @@ def exploration_demo_report(
         mutation_policy=mutation_policy,
     )
     target = NodeTarEffectTarget.bind(backend, image_id, profile=NativeEffectProfile.FULL)
+    target, schedule = apply_identity_schedule(target, identity_check_every)
     vocab_mode = next(
         (
             mode.value
@@ -802,6 +809,7 @@ def exploration_demo_report(
             result = run_effect_campaign(
                 minimal_seed_corpus(), produce, config, on_step=record_step
             )
+        identity_record = finish_identity_schedule(target, schedule)
     except KeyboardInterrupt as error:
         if recorder is not None:
             recorder.close(state="stopped", stop_reason=repr(error))
@@ -864,6 +872,7 @@ def exploration_demo_report(
     )
     apply_sentinel_set_record(report, sentinel_set)
     apply_infra_reexecutions(report, stall_recovery)
+    report.update(identity_record)
     return report
 
 

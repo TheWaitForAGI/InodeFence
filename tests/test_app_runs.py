@@ -658,3 +658,29 @@ def test_one_broken_cell_does_not_hide_the_others(tmp_path: Path) -> None:
     states = {r.run_id: runs.read_run(r).summary.read_state for r in found}  # type: ignore[union-attr]
     assert states["node-tar-7.5.2"] is ReadState.OK
     assert states["node-tar-7.5.3"] is ReadState.UNVALIDATED
+
+
+def test_an_unforeseen_error_in_one_run_is_that_runs_unreadable_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = _fixture_cell(tmp_path, termination=None)
+    ref = runs.RunRef(runs.RunKind.VERIFY, path.parent, path.parent.name)
+
+    def explode(*_: object, **__: object) -> None:
+        raise RuntimeError("unforeseen")
+
+    monkeypatch.setattr(runs, "read_result", explode)
+    snapshot = runs.read_run(ref, now=1.0)
+    assert snapshot.ref is ref and snapshot.summary is not None
+    assert snapshot.summary.read_state is ReadState.UNREADABLE
+    assert snapshot.read_errors and "RuntimeError: unforeseen" in snapshot.read_errors[0]
+
+
+def test_a_folder_that_breaks_discovery_is_listed_not_fatal(tmp_path: Path) -> None:
+    _fixture_cell(tmp_path, termination=None)  # tmp/verify/node-tar-7.5.2
+    odd = tmp_path / "verify" / "odd-out"
+    _launcher_log(odd, stamp="20261399T999999Z")  # matches the name pattern, not a real time
+    listings = runs.discover_runs([tmp_path / "verify"])
+    assert [x.ref.run_id for x in listings if x.ref] == ["node-tar-7.5.2"]
+    (broken,) = [x for x in listings if x.ref is None]
+    assert broken.path == odd and broken.read_state is ReadState.UNREADABLE and broken.error

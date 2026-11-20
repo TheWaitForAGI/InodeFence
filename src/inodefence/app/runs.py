@@ -1010,14 +1010,16 @@ def discover_runs(
             seen += 1
             try:
                 ref = _classify(folder)
-            except OSError as error:  # Path.is_file() raises on EACCES (only ENOENT is quiet)
+                if ref is None and (folder / RUNTIME_DIR).is_dir():
+                    ref = _launcher_only_run(folder)
+            # OSError: Path.is_file() raises on EACCES (only ENOENT is quiet); anything else is a
+            # folder this scan did not foresee -- listed as unreadable, never ending the scan
+            except Exception as error:  # noqa: BLE001
                 found[f"error:{folder}"] = (
                     0.0,
                     RunListing(folder, None, ReadState.UNREADABLE, str(error)),
                 )
                 continue
-            if ref is None and (folder / RUNTIME_DIR).is_dir():
-                ref = _launcher_only_run(folder)
             if ref is not None:
                 listing = RunListing(folder, ref, ReadState.OK)
                 found.setdefault(ref.key, (_mtime(folder), listing))
@@ -1123,10 +1125,24 @@ def _replays_beside(folders: Sequence[Path]) -> tuple[ReplayRecord, ...]:
 
 
 def read_run(ref: RunRef, *, now: float | None = None) -> RunSnapshot:
-    """Everything the files say about one run right now. Never raises for bad input."""
+    """Everything the files say about one run right now. Never raises for bad input.
+
+    If reading one run fails in a way the readers below did not foresee, that run alone comes back
+    as an :attr:`ReadState.UNREADABLE` summary with the reason -- it is never dropped silently and
+    never takes the other runs of a scan with it.
+    """
     import time
 
     read_at = time.time() if now is None else now
+    try:
+        return _read_run(ref, read_at)
+    except Exception as error:  # noqa: BLE001 -- one run's files must not end every view
+        reason = f"could not read this run: {type(error).__name__}: {error}"
+        summary = RunSummary(ref=ref, read_state=ReadState.UNREADABLE, error=reason)
+        return RunSnapshot(ref, read_at, summary=summary, read_errors=(reason,))
+
+
+def _read_run(ref: RunRef, read_at: float) -> RunSnapshot:
     errors: list[str] = []
     if ref.kind is RunKind.REPLAY:
         record = read_replay(ref.root)

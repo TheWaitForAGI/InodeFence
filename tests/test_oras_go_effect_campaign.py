@@ -553,3 +553,40 @@ def test_no_hooks_report_is_byte_identical_and_legacy_on_step_still_works() -> N
     assert dumped(on_step=lambda step: legacy.append(step.index)) == baseline
     assert dumped(hooks=CampaignHooks(on_step=lambda step: hooked.append(step.index))) == baseline
     assert legacy == hooked == list(range(9))
+
+
+# -- #542: streaming report collector gives the same report as the retained path ---------------
+
+
+def _violating_produce(case: ArchiveCase) -> OrasGoFrameRun:
+    if case == _ESCAPE_CASE:
+        after = (_obj(_SENTINEL, ino=9, nlink=2), _obj("extract/d/evil", ino=9, nlink=2))
+        return _run(
+            case,
+            before=_SENTINEL_ONLY,
+            after=after,
+            frame=_frame((_external_hardlink_attempt(),)),
+        )
+    return _benign_run(case)
+
+
+@pytest.mark.parametrize("produce", [_benign_run, _violating_produce], ids=["benign", "violating"])
+@pytest.mark.parametrize("seed", [1, 7])
+def test_streaming_collector_report_is_byte_identical_to_the_retained_report(produce, seed) -> None:
+    from inodefence.campaign_hooks import CampaignHooks
+    from inodefence.oras_go_effect_campaign import OrasGoLightResult, OrasGoReportCollector
+
+    config = OrasGoEffectCampaignConfig(random_seed=seed, execution_budget=len(_seeds()) + 12)
+    full = run_oras_go_effect_campaign(_seeds(), produce, config)
+    expected = oras_go_effect_campaign_report(full, producer="unit-test", label="demo run")
+
+    collector = OrasGoReportCollector(producer="unit-test", label="demo run")
+    light = run_oras_go_effect_campaign(
+        _seeds(), produce, config, hooks=CampaignHooks(on_step=collector.add, retain_steps=False)
+    )
+    assert isinstance(light, OrasGoLightResult)
+    streamed = collector.report(light)
+    as_bytes = lambda report: json.dumps(report, indent=2, sort_keys=True).encode()  # noqa: E731
+    assert as_bytes(streamed) == as_bytes(expected)
+    if produce is _violating_produce:
+        assert expected["discovered_violation"] is True

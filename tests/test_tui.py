@@ -509,3 +509,74 @@ def test_an_unclassified_violation_is_its_own_row_not_a_candidate(tmp_path: Path
     assert rows["violation candidates"] == "0"
     assert rows["known fixtures violated (verify)"] == "0"
     model.verify_rows(state)  # renders without raising
+
+
+@_sync
+async def test_oracle_flags_always_say_not_confirmed(tmp_path: Path) -> None:
+    # W4: a screenshot of the Findings tab (empty, listed or detail) never reads as a finding
+    from inodefence.ui.tui.app import NOT_CONFIRMED
+
+    empty = _app([syn.explore_out(tmp_path / "empty")], syn.Clock())
+    async with empty.run_test(size=(160, 48)) as pilot:
+        await _settle(empty, pilot)
+        await pilot.press("4")
+        await pilot.pause()
+        assert empty.query_one("#p-finding-list").border_subtitle == NOT_CONFIRMED
+        assert empty.query_one("#p-finding-detail").border_subtitle == NOT_CONFIRMED
+        assert "not confirmed" in str(empty.query_one("#p-oracle").border_subtitle)
+
+    out, rid = syn.explore_out(tmp_path / "one"), syn.run_id()
+    res = syn.result(cases=[syn.case("step-1", True)], saved=["step-1"])
+    syn.write_result(out / "target-explore" / f"{rid}-result", res)
+    app = _app([out], syn.Clock())
+    async with app.run_test(size=(160, 48)) as pilot:
+        await _settle(app, pilot)
+        assert "not confirmed" in _text(app, "#recent-candidates")
+        assert "not confirmed" in str(app.query_one("#p-oracle").border_subtitle)
+        await pilot.press("4")
+        await pilot.pause()
+        await pilot.press("enter")
+        await pilot.pause()
+        assert app.screen.query_one("#detail").border_subtitle == NOT_CONFIRMED
+
+
+def test_no_screen_text_says_finding() -> None:
+    # Jiwoong 2026-11-20: the screen name is "Flagged cases"; internal names (ids, routes, fields)
+    # keep "finding". A string with a space or a capital is screen text; ids and selectors are not.
+    import ast
+
+    for module in (Path(tui.__file__).parent).glob("*.py"):
+        tree = ast.parse(module.read_text(encoding="utf-8"))
+        docstrings = {
+            id(node.body[0].value)
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Module | ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef)
+            and node.body
+            and isinstance(node.body[0], ast.Expr)
+            and isinstance(node.body[0].value, ast.Constant)
+        }
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Constant) or not isinstance(node.value, str):
+                continue
+            text = node.value
+            if id(node) in docstrings or "finding" not in text.lower():
+                continue
+            if "{" in text:  # the stylesheet: selectors are ids, not screen text
+                continue
+            looks_like_screen_text = " " in text or any(ch.isupper() for ch in text)
+            assert not looks_like_screen_text, f"{module.name}:{node.lineno}: {text!r}"
+
+
+@_sync
+async def test_the_tab_bar_fits_80_columns(tmp_path: Path) -> None:
+    from textual.widgets import Tab
+
+    app = _app([syn.explore_out(tmp_path)], syn.Clock())
+    async with app.run_test(size=(80, 24)) as pilot:
+        await _settle(app, pilot)
+        tabs = list(app.query(Tab))
+        labels = [str(t.label) for t in tabs]
+        assert "4 Flagged cases" in labels and not any("Findings" in label for label in labels)
+        assert all(t.region.right <= 80 and t.region.width > 0 for t in tabs), [
+            (str(t.label), t.region) for t in tabs
+        ]

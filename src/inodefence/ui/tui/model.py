@@ -631,7 +631,7 @@ def finding_detail(state: DashboardState, key: str) -> list[tuple[str, Cell]]:
 
 def artifact_lines(snapshot: RunSnapshot | None) -> list[tuple[str, Cell]]:
     if snapshot is None:
-        return [("run", Cell("select a run in Campaigns or Findings", DIM))]
+        return [("run", Cell("select a run in Campaigns or Flagged cases", DIM))]
     ref = snapshot.ref
     lines: list[tuple[str, Cell]] = [
         ("run", Cell(f"{ref.kind.value} {text(ref.run_id)}", ACCENT)),

@@ -12,6 +12,8 @@
    - file contents and entry names are never shown (paths and hashes only). */
 
 const EM_DASH = "—";
+// Every oracle flag carries this wherever it is listed, so a screenshot never reads as a finding.
+const NOT_CONFIRMED = "oracle flags · not confirmed";
 const SYMBOL = { ok: "✓", warn: "!", bad: "✗", info: "i", muted: "·", accent: "›" };
 const TONE = {
   OK: "ok", PASS: "ok", REPRODUCED: "ok", COMPLETE: "ok", YES: "ok", SAME: "ok",
@@ -231,6 +233,7 @@ function renderOverview(view) {
   const needsRepro = readable.reduce((a, r) => a + (r.status.candidates_needs_repro || 0), 0);
   const candTotal = candSum + needsRepro;  // all exploration candidates (both finding classes)
   const fixtureViol = readable.reduce((a, r) => a + (r.status.fixture_violations || 0), 0);
+  const unclassified = readable.reduce((a, r) => a + (r.status.unclassified_violations || 0), 0);
   const replays = (replaysData && replaysData.replays) || [];
   const reproduced = replays.filter((r) => r.replay.conclusion === "reproduced_violation").length;
 
@@ -254,7 +257,9 @@ function renderOverview(view) {
        el("span", { class: "chip chip-sm chip-muted" }, [`${finished} finished`])].filter(Boolean),
       "--if-info", "runs"),
     stat("violation candidates", readable.length === 0 ? EM_DASH : String(candTotal),
-      [needsRepro ? el("span", { class: "chip chip-sm chip-warn" }, [`${needsRepro} need repro check`]) : null,
+      [el("span", { class: "chip chip-sm chip-muted", title: NOT_CONFIRMED }, ["not confirmed"]),
+       needsRepro ? el("span", { class: "chip chip-sm chip-warn" }, [`${needsRepro} need repro check`]) : null,
+       unclassified ? el("span", { class: "chip chip-sm chip-warn", title: "flagged in a result the strict reader refused, whose mode and run kind are both unknown: neither candidates nor fixtures" }, [`${unclassified} unclassified (result not validated)`]) : null,
        fixtureViol ? el("span", { class: "chip chip-sm chip-info", title: "known-fixture violations from verify cells: a controlled check, not exploration candidates" }, [`${fixtureViol} fixtures violated (verify)`]) : null,
        notRead.length ? el("span", { class: "chip chip-sm chip-muted" }, [`${notRead.length} not read`]) : null].filter(Boolean),
       candTotal > 0 ? "--if-bad" : "--if-muted", "candidates"),
@@ -329,7 +334,7 @@ function renderOverview(view) {
       cardLabeled("termination of extractor", termRows.length ? barChart(termRows) : empty("no termination counts", ["no termination counts in the scanned results (live mid-run numbers are node-tar only)"])),
       cardLabeled("replays by conclusion", replays.length ? barChart(conclRows) : empty("no replays yet", [["run ", el("code", {}, ["inodefence replay <run-NNNNNN folder>"])]])),
     ]),
-    cardLabeled("recent candidates", renderRecentCandidates(findingsData)),
+    cardLabeled("recent candidates · not confirmed", renderRecentCandidates(findingsData)),
   ]);
   view.appendChild(row1);
   view.appendChild(lower);
@@ -426,6 +431,7 @@ function runDetailCards(data) {
     ["terminations", terms],
     ["candidates", s.verdict != null || s.executed != null || findings.length ? findings.length : null],
     // a verify cell's known fixtures the oracle flagged: a controlled check, not candidates
+    ...((snap.unclassified_violations || []).length ? [["unclassified (result not validated)", snap.unclassified_violations.length]] : []),
     ...(snap.ref.kind === "verify" ? [["fixtures violated (verify)", s.verdict != null || s.executed != null ? fixtures.length : null]] : []),
     ["result", s.result_path],
   ];
@@ -554,10 +560,10 @@ async function renderTargets(view) {
 let findingsFilter = { target: "", contract: "", klass: "", conclusion: "" };
 let findingsSelected = null;
 async function renderFindings(view) {
-  view.appendChild(el("h2", { class: "page" }, ["Findings"]));
+  view.appendChild(el("h2", { class: "page" }, ["Flagged cases", el("span", { class: "muted", style: "font-size:12px;font-weight:400;margin-left:8px" }, [NOT_CONFIRMED])]));
   let fd, rd;
   try { [fd, rd] = await Promise.all([api("/api/findings?limit=500"), api("/api/replays?limit=500")]); }
-  catch (err) { view.appendChild(el("div", { class: "card" }, [empty("could not load findings", [String(err)])])); return; }
+  catch (err) { view.appendChild(el("div", { class: "card" }, [empty("could not load flagged cases", [String(err)])])); return; }
   const byCase = {};
   for (const r of rd.replays || []) { const c = r.replay.original_case_id; if (c) byCase[c] = r.replay; }
   let items = (fd.findings || []).filter((f) => f.case.finding);
@@ -599,10 +605,10 @@ async function renderFindings(view) {
     item.addEventListener("click", () => { findingsSelected = { f, replay: rp || null }; rerender(); });
     return item;
   }));
-  const none = anyFilter ? empty("no findings match", []) : empty("no candidates yet", ["no oracle-flagged exploration case in the scanned runs"]);
+  const none = anyFilter ? empty("no cases match", []) : empty("no candidates yet", ["no oracle-flagged exploration case in the scanned runs"]);
   const notRead = (fd.unreadable || []).length ? el("div", { class: "note" }, [`${fd.unreadable.length} run(s) could not be read; see Runs for the reason`]) : null;
   const left = el("div", {}, [filters, shown.length ? list : none, notRead, truncNote(fd)]);
-  const right = findingsSelected ? findingDetail(findingsSelected.f, findingsSelected.replay) : el("div", { class: "card" }, [empty("select a finding", ["pick a candidate to see its contracts, input hash and replay rounds"])]);
+  const right = findingsSelected ? findingDetail(findingsSelected.f, findingsSelected.replay) : el("div", { class: "card" }, [empty("select a case", ["pick a candidate to see its contracts, input hash and replay rounds"])]);
   const label = anyFilter ? `candidates (${shown.length} of ${items.length}) · filtered` : `candidates (${shown.length})`;
   view.appendChild(el("div", { class: "split" }, [cardLabeled(label, left), cardLabeled("detail", right)]));
 
@@ -819,7 +825,7 @@ async function renderArtifacts(view) {
 const ROUTES = {
   overview: { title: "Overview" },
   targets: { title: "Targets" }, experiments: { title: "Experiments" },
-  findings: { title: "Findings" }, replay: { title: "Replay" }, artifacts: { title: "Artifacts" },
+  findings: { title: "Flagged cases" }, replay: { title: "Replay" }, artifacts: { title: "Artifacts" },
 };
 function currentHash() { return (location.hash.replace(/^#\//, "") || "overview"); }
 function currentRoute() { return currentHash().split("/")[0].split("?")[0]; }
@@ -835,7 +841,9 @@ async function loadOverviewData() {
 
 async function render() {
   const route = currentRoute();
-  $("#page-title").textContent = route === "run" ? "Run" : (ROUTES[route] || ROUTES.overview).title;
+  const titleEl = $("#page-title");
+  titleEl.textContent = route === "run" ? "Run" : (ROUTES[route] || ROUTES.overview).title;
+  if (route === "findings") titleEl.appendChild(el("span", { class: "muted", style: "font-size:12px;font-weight:400;margin-left:8px" }, [NOT_CONFIRMED]));
   for (const a of document.querySelectorAll("#sidenav a")) a.classList.toggle("active", a.dataset.nav === route);
   const view = $("#view");
   if (route === "overview") {

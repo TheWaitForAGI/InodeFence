@@ -300,3 +300,30 @@ def test_status_marks_an_unreadable_result_apart_from_an_error_verdict(
     assert "! UNREADABLE" in seen and "✗ ERROR" not in seen
     assert "results PASS FAIL ERROR unreadable" in seen or "unreadable" in seen
     assert "first at" not in seen  # verify results: no exploration value, no column
+
+
+def test_the_compare_panel_never_reads_as_a_verdict(monkeypatch, capsys, two_results) -> None:
+    """PASS/FAIL and the green chip are for verdicts only; the input comparison is neutral."""
+    _rich_terminal(monkeypatch)
+    a, _ = two_results
+    assert cli.main(["compare", str(a), str(a)]) == 0  # A is FAIL; every input the same
+    seen = _visible(capsys.readouterr().out)
+    assert "i INFO Same inputs · 1 of 2" not in seen  # one case has no recorded SHA-256
+    assert "! PARTIAL Same inputs · 1 of 2" in seen
+    assert "✓ PASS Same" not in seen and "WARN" not in seen
+    assert "verdict A ✗ FAIL B ✗ FAIL" in seen  # the verdicts keep their own chips
+
+
+def test_all_same_inputs_is_info_not_pass(monkeypatch, capsys, tmp_path) -> None:
+    data = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    data["cases"] = [c for c in data["cases"] if c["case_id"] == "toplevel_hardlink"]
+    data["violating_cases"] = [
+        c for c in data.get("violating_cases", []) if c == "toplevel_hardlink"
+    ]
+    data["runs"]["executed"] = 1  # keep the derived counts consistent with the one case left
+    a = _cell(tmp_path, "a", data)
+    assert runs.read_result(a).read_state is runs.ReadState.OK
+    _rich_terminal(monkeypatch)
+    assert cli.main(["compare", str(a), str(a)]) == 0
+    seen = _visible(capsys.readouterr().out)
+    assert "i INFO Same inputs · 1 of 1" in seen and "✓ PASS Same" not in seen

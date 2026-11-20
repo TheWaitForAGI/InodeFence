@@ -242,7 +242,10 @@ def compare_screen(
         ),
     )
     out.append(ui.section("Cases (C0 C1 C2: V violated · - held · ? not judged)", table))
-    status = "PASS" if different == 0 and one_side == 0 and unknown == 0 else "WARN"
+    # The panel is about the inputs, not a verdict: PASS/FAIL words and the green chip belong to
+    # verdicts only (shown on the line below), so the comparison uses neutral words.
+    all_same = different == 0 and one_side == 0 and unknown == 0 and bool(rows)
+    status = "INFO" if all_same else "PARTIAL"
     lines: list[str | Text] = [
         Text.assemble("verdict  A ", ui.chip(verdict_a), "   B ", ui.chip(verdict_b)),
         f"{same} of {len(rows)} cases ran the same input (recorded SHA-256 equal on both sides)",
@@ -255,7 +258,7 @@ def compare_screen(
         lines.append(
             Text(f"unknown, so not called the same input: {unknown_reason(rows)}", style="if.warn")
         )
-    title = "Same inputs, two results" if status == "PASS" else "Not every input is shown same"
+    title = f"Same inputs · {same} of {len(rows)}"
     out.append(ui.result_panel(status, title, lines))
     return out
 

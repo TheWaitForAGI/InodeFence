@@ -194,6 +194,24 @@ def _stalled(snapshot: runs_app.RunSnapshot) -> bool | None:
     return None if age is None else age > 4 * runs_app.LIVE_PULL_INTERVAL_SECONDS
 
 
+def _launcher_status(snapshot: runs_app.RunSnapshot) -> dict[str, Any] | None:
+    """For an id-less run seen only through its launcher log (``RunSnapshot.launcher_state``): an
+    estimate of what it is doing. The activity is recomputed with the web's own clock through the
+    app layer's ``launcher_activity`` (never re-stated here), so the three screens agree -- ACTIVE
+    within ``LAUNCHER_QUIET_MAX_SECONDS`` of the log's last write, else NO_ACTIVITY (not running).
+    """
+    state = snapshot.launcher_state
+    if state is None:
+        return None
+    now = time.time()
+    return {
+        "activity": runs_app.launcher_activity(state.last_write, now).value,
+        "last_write": state.last_write,
+        "age_seconds": max(0.0, now - state.last_write),
+        "estimated": state.estimated,  # always True: a launcher-log estimate, not a recorded state
+    }
+
+
 def _run_status(snapshot: runs_app.RunSnapshot) -> dict[str, Any]:
     """A compact per-run status for the runs table and the Overview aggregates (no recompute).
 
@@ -226,6 +244,10 @@ def _run_status(snapshot: runs_app.RunSnapshot) -> dict[str, Any]:
         "candidates_needs_repro": _count_findings(
             snapshot, runs_app.FindingClass.CANDIDATE_NEEDS_REPRO_CHECK
         ),
+        # a verify cell's known-fixture violations: counted apart from exploration candidates (they
+        # are a controlled check, never in snapshot.findings), shown on their own on the dashboard.
+        "fixture_violations": len(snapshot.fixture_violations),
+        "launcher": _launcher_status(snapshot),
         "replays": len(snapshot.replays),
         "progress_age_seconds": snapshot.progress_age(),
     }
@@ -363,27 +385,30 @@ def build_app(
     def api_findings(limit: int = FINDINGS_DEFAULT_LIMIT) -> dict[str, Any]:
         chosen, total, limit = bounded_runs(limit)
         findings: list[dict[str, Any]] = []
+        fixture_violations: list[dict[str, Any]] = []
         for listing in chosen:
             ref = listing.ref
             assert ref is not None  # bounded_runs keeps only listings with a ref
             snapshot = read_snapshot(ref)
-            ident = run_id(ref)
             summary = snapshot.summary
-            for row in snapshot.findings:
-                findings.append(
-                    {
-                        "run_id": ident,
-                        "run_kind": ref.kind.value,
-                        "target": snapshot.ref.target,
-                        "version": snapshot.ref.version,
-                        "validated": summary.validated if summary else None,
-                        "read_state": summary.read_state.value if summary else None,
-                        "case": to_jsonable(row),
-                    }
-                )
+            meta = {
+                "run_id": run_id(ref),
+                "run_kind": ref.kind.value,
+                "target": snapshot.ref.target,
+                "version": snapshot.ref.version,
+                "validated": summary.validated if summary else None,
+                "read_state": summary.read_state.value if summary else None,
+            }
+            findings.extend({**meta, "case": to_jsonable(row)} for row in snapshot.findings)
+            # fixture-regression violations are a controlled check, not exploration candidates:
+            # kept in a separate list so the dashboard never counts or lists them as candidates.
+            fixture_violations.extend(
+                {**meta, "case": to_jsonable(row)} for row in snapshot.fixture_violations
+            )
         return {
             "schema": API_SCHEMA,
             "findings": findings,
+            "fixture_violations": fixture_violations,
             "runs_total": total,
             "runs_scanned": len(chosen),
             "truncated": total > len(chosen),

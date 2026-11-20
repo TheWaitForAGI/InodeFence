@@ -181,8 +181,15 @@ function toneChip(label, t, title) { return el("span", { class: `chip chip-${t} 
 
 // The stall decision (and its threshold) is the server's: `stalled` is true/false/null in status.
 function runState(s) {
+  // an id-less run seen only through its launcher log: estimated, no numbers. ACTIVE = launching;
+  // NO_ACTIVITY = quiet past any live phase, so counted as stalled, not running (matches the TUI).
+  if (s && s.launcher) {
+    const age = s.launcher.age_seconds;
+    if (s.launcher.activity === "active") return { label: "launching", tone: "info", active: true, age, estimated: true };
+    return { label: "no activity", tone: "warn", active: false, stalled: true, age, estimated: true };
+  }
   if (s && s.source === "live" && s.state === "running") {
-    if (s.stalled === true) return { label: "stalled", tone: "warn", active: false, age: s.progress_age_seconds };
+    if (s.stalled === true) return { label: "stalled", tone: "warn", active: false, stalled: true, age: s.progress_age_seconds };
     if (s.stalled === false) return { label: "running", tone: "info", active: true };
     return { label: "running (age ?)", tone: "warn", active: false }; // stalled null = age unknown
   }
@@ -208,10 +215,12 @@ function renderOverview(view) {
   const readable = scanned.filter((r) => !notRead.includes(r));
   const campaignsTotal = campaigns.length;
   const active = scanned.filter((r) => runState(r.status)?.active).length;
-  const stalledN = scanned.filter((r) => r.status.stalled === true).length;
+  const stalledN = scanned.filter((r) => runCategory(r.status) === "stalled").length;
   const finished = scanned.filter((r) => r.status.verdict != null).length;
   const candSum = readable.reduce((a, r) => a + (r.status.candidates || 0), 0);
   const needsRepro = readable.reduce((a, r) => a + (r.status.candidates_needs_repro || 0), 0);
+  const candTotal = candSum + needsRepro;  // all exploration candidates (both finding classes)
+  const fixtureViol = readable.reduce((a, r) => a + (r.status.fixture_violations || 0), 0);
   const replays = (replaysData && replaysData.replays) || [];
   const reproduced = replays.filter((r) => r.replay.conclusion === "reproduced_violation").length;
 
@@ -234,9 +243,11 @@ function renderOverview(view) {
        stalledN ? el("span", { class: "chip chip-sm chip-warn" }, [`${stalledN} stalled`]) : null,
        el("span", { class: "chip chip-sm chip-muted" }, [`${finished} finished`])].filter(Boolean),
       "--if-info", "runs"),
-    stat("violation candidates", readable.length === 0 ? EM_DASH : String(candSum),
-      [el("span", { class: "chip chip-sm chip-warn" }, [`${needsRepro} need repro check`]), notRead.length ? el("span", { class: "chip chip-sm chip-muted" }, [`${notRead.length} not read`]) : null].filter(Boolean),
-      candSum > 0 ? "--if-bad" : "--if-muted", "candidates"),
+    stat("violation candidates", readable.length === 0 ? EM_DASH : String(candTotal),
+      [needsRepro ? el("span", { class: "chip chip-sm chip-warn" }, [`${needsRepro} need repro check`]) : null,
+       fixtureViol ? el("span", { class: "chip chip-sm chip-info", title: "known-fixture violations from verify cells: a controlled check, not exploration candidates" }, [`${fixtureViol} fixtures violated (verify)`]) : null,
+       notRead.length ? el("span", { class: "chip chip-sm chip-muted" }, [`${notRead.length} not read`]) : null].filter(Boolean),
+      candTotal > 0 ? "--if-bad" : "--if-muted", "candidates"),
     stat("replays", String(replays.length),
       [replays.length ? el("span", { class: "chip chip-sm chip-ok" }, [`${reproduced} reproduced`]) : el("span", { class: "chip chip-sm chip-muted" }, ["none yet"])],
       "--if-ok", "replay"),
@@ -387,7 +398,9 @@ function runDetailCards(data) {
   const snap = data.snapshot;
   const s = snap.summary || {};
   const p = snap.progress || {};
-  const terms = Object.entries(s.terminations || {}).filter(([, n]) => n != null).map(([k, n]) => `${k} ${n}`).join(", ") || null;
+  // a verify cell records no termination counts: every key is None (unknown) -> "?", not 0/dropped.
+  const termEntries = Object.entries(s.terminations || {});
+  const terms = termEntries.length ? termEntries.map(([k, n]) => `${k} ${n == null ? "?" : n}`).join(", ") : null;
   const findings = (snap.findings || []).filter((f) => f.finding);
   const rows = [
     ["kind", snap.ref.kind], ["target", snap.ref.target], ["version", snap.ref.version],
@@ -567,6 +580,28 @@ async function renderFindings(view) {
   const right = findingsSelected ? findingDetail(findingsSelected.f, findingsSelected.replay) : el("div", { class: "card" }, [empty("select a finding", ["pick a candidate to see its contracts, input hash and replay rounds"])]);
   const label = anyFilter ? `candidates (${shown.length} of ${items.length}) · filtered` : `candidates (${shown.length})`;
   view.appendChild(el("div", { class: "split" }, [cardLabeled(label, left), cardLabeled("detail", right)]));
+
+  // verify cells' known-fixture violations: a controlled reproduction, kept apart from candidates.
+  const fvAll = fd.fixture_violations || [];
+  if (fvAll.length) {
+    const fvShown = fvAll.filter((f) =>
+      (!findingsFilter.target || f.target === findingsFilter.target)
+      && (!findingsFilter.contract || f.case[findingsFilter.contract] === true)
+      && (!search || JSON.stringify([f.case.case_id, f.target, f.version]).toLowerCase().includes(search)));
+    const fvList = el("div", { class: "rank-list" }, fvShown.slice(0, 300).map((f) => {
+      const c = f.case;
+      const marks = ["c0", "c1", "c2"].map((k) => c[k] === true ? el("span", { class: "chip chip-bad chip-sm" }, [k.toUpperCase()]) : null).filter(Boolean);
+      marks.push(el("span", { class: "chip chip-info chip-sm", title: "a known fixture the oracle flagged in a verify cell: a controlled reproduction, not an exploration candidate" }, ["FIXTURE"]));
+      if (f.validated === false) marks.push(chip("as stored", "chip-warn chip-sm"));
+      const sha = c.tar_sha256 ? el("span", { class: "mono", style: "font-size:11px" }, [c.tar_sha256.slice(0, 12) + "…"]) : null;
+      return el("div", { class: "rank-item" }, [
+        el("div", { style: "min-width:0" }, [el("div", { class: "mono", style: "overflow:hidden;text-overflow:ellipsis" }, [dash(c.case_id)]), el("div", { class: "meta" }, [`${f.target || EM_DASH}${f.version ? "@" + f.version : ""} `, sha])]),
+        el("div", { class: "row-flex wrap" }, marks),
+      ]);
+    }));
+    const fvLabel = `known fixtures violated (verify) (${fvShown.length}${fvShown.length !== fvAll.length ? " of " + fvAll.length : ""})`;
+    view.appendChild(cardLabeled(fvLabel, fvShown.length ? fvList : empty("no fixtures match", [])));
+  }
 }
 function findingDetail(f, replay) {
   const c = f.case;
@@ -643,7 +678,7 @@ let experimentsFilter = { running: true, stalled: true, finished: true, "no resu
 let experimentsSelected = null;
 function runCategory(s) {
   const rs = runState(s);
-  if (rs && rs.label === "stalled") return "stalled";
+  if (rs && rs.stalled) return "stalled";
   if (rs && rs.active) return "running";
   if (s && s.verdict != null) return "finished";
   return "no result";
@@ -695,7 +730,8 @@ function experimentsTable(rows, onPick, compact, noCampaigns) {
   const body = el("tbody", {}, rows.map((r) => {
     const s = r.status || {};
     const rs = runState(s);
-    const terms = Object.entries(s.terminations || {}).filter(([, n]) => n != null).map(([k, n]) => `${k[0]}${n}`).join(" ") || EM_DASH;
+    const te = Object.entries(s.terminations || {});
+    const terms = te.length ? te.map(([k, n]) => `${k[0]}${n == null ? "?" : n}`).join(" ") : EM_DASH;
     const cells = [
       el("td", { class: "mono nowrap", title: r.run_id || r.id }, [tailId(r.run_id, 12)]),
       el("td", {}, [dash(r.target)]),

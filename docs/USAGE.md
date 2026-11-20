@@ -320,7 +320,7 @@ wheel로만 설치하면(클론 없음, `INODEFENCE_HOME` 없음) 대시보드�
 "target registry not readable · no repository root configured"를 보여 줍니다. 대상 목록은 클론에서 읽기 때문이며,
 위 [설치](#설치) 표의 다른 명령과 같은 규칙입니다. 클론에서 설치하거나 `INODEFENCE_HOME=<클론>`을 주세요.
 
-실행 중 표시의 한계: 결과 ID가 아직 없는 탐색은 런처 로그로만 보이고(마지막 쓰기 시각으로 추정한 "running"/"no activity" 표시),
+실행 중 표시의 한계: 결과 ID가 아직 없는 탐색은 런처 로그로만 보이고(마지막 쓰기 시각으로 추정한 활동 중 — "launching" — 또는 "no activity"; 수치 없음),
 `--verbose`로(또는 드라이버를 직접) 시작한 python-tarfile·decompress·oras-go 탐색은 런처 로그를 남기지 않으므로 끝날 때까지
 이 화면에 보이지 않습니다. 끝나면 그 결과로 나타납니다.
 
@@ -486,7 +486,7 @@ replay를 돌리는 조작은 없고, 아무 파일도 쓰지 않습니다. 기�
 | Findings | 위반 후보(C0·C1·C2, 분류, 종료 상태, replay 결론과 같은 계약 재현 수/판정된 라운드 수, 폴더 위치) |
 | Artifacts | 고른 실행의 `result.json`, 판정, 엔진·이미지 해시, 저장된 입력의 SHA-256과 위치, replay 폴더, 런처 로그 |
 
-실행 중 표시의 한계: 결과 ID가 아직 없는 탐색은 런처 로그로만 보이고(마지막 쓰기 시각으로 추정한 "running"/"no activity" 표시),
+실행 중 표시의 한계: 결과 ID가 아직 없는 탐색은 런처 로그로만 보이고(마지막 쓰기 시각으로 추정한 활동 중 — "launching" — 또는 "no activity"; 수치 없음),
 `--verbose`로(또는 드라이버를 직접) 시작한 python-tarfile·decompress·oras-go 탐색은 런처 로그를 남기지 않으므로 끝날 때까지
 이 화면에 보이지 않습니다. 끝나면 그 결과로 나타납니다.
 

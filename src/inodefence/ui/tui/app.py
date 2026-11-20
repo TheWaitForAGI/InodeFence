@@ -39,6 +39,7 @@ from inodefence.ui.tui.screens_run import (
     CommandFormScreen,
     CommandPicker,
     ConfirmScreen,
+    LaunchesScreen,
     OutputScreen,
     confirm_notes,
     out_folder,
@@ -244,6 +245,7 @@ class InodeFenceTui(App[None]):
         Binding("4", "show('findings')", "Flagged cases"),
         Binding("5", "show('artifacts')", "Artifacts"),
         Binding("n", "new_command", "Run…"),
+        Binding("l", "launches", "My commands"),
         # shortcuts into a form filled from the highlighted row (listed in help; footer stays short)
         Binding("v", "shortcut('verify')", "verify", show=False),
         Binding("e", "shortcut('explore')", "explore", show=False),
@@ -630,6 +632,27 @@ class InodeFenceTui(App[None]):
             return
         self._open_form(self._forms(), command, preset)
 
+    def action_launches(self) -> None:
+        self.push_screen(
+            LaunchesScreen(lambda: launch.list_launches(self._launch_root)), self._go_to_folder
+        )
+
+    def _go_to_folder(self, folder: str | None) -> None:
+        """Enter on a command in "my commands": highlight the run written under its ``--out``."""
+        if folder is None:
+            self.notify("no --out: the run is under the CLI's default folder (see doctor)")
+            return
+        target = Path(folder).resolve()
+        for key, snapshot in self.state.snapshots.items():
+            if Path(snapshot.ref.root).resolve() == target:
+                self.selected_key = key
+                self.action_show(
+                    "campaigns" if snapshot.ref.kind.value == "explore" else "artifacts"
+                )
+                self.draw_selection()
+                return
+        self.notify(f"{folder}: no run read there yet (it appears once it writes)")
+
     def action_new_command(self) -> None:
         forms = self._forms()
         self.push_screen(CommandPicker(forms), lambda name: self._open_form(forms, name))
@@ -694,7 +717,7 @@ class InodeFenceTui(App[None]):
             out.resolve().is_relative_to(Path(root).expanduser().resolve()) for root in self.roots
         ):
             self._add_session_root(out)
-        self.notify(" ".join(argv), title="started (keeps running if this screen closes)")
+        self.notify(" ".join(argv), title="started · l: my commands (keeps running if this closes)")
 
     def _add_session_root(self, folder: Path) -> None:
         """Scan ``folder`` too, for this session only (decided 2026-11-20): a new follower over the
@@ -723,6 +746,7 @@ class InodeFenceTui(App[None]):
             ("enter", "candidate detail, or the artifacts of a run"),
             ("esc", "close a detail"),
             ("n", "run a command: pick, fill, confirm"),
+            ("l", "my commands: what this screen started, its state and output"),
             ("v / e", "Targets: verify / explore the highlighted target"),
             ("p", "Flagged cases: replay the highlighted case"),
             ("s / m", "a run: its status / its result's summary"),

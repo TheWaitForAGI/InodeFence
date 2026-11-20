@@ -24,6 +24,7 @@ from textual.widgets import (
     Button,
     Checkbox,
     Collapsible,
+    DataTable,
     Input,
     Label,
     OptionList,
@@ -33,6 +34,7 @@ from textual.widgets import (
 from textual.widgets.option_list import Option
 
 from inodefence.target_result import LABEL
+from inodefence.ui.tui import launch as launch_records
 from inodefence.ui.tui.forms import CommandForm, Field, FieldKind, command_line, missing_required
 from inodefence.ui.tui.palette import PALETTE, TITLE
 
@@ -409,9 +411,102 @@ class OutputScreen(ModalScreen[None]):
             yield Static(self._body, id="output-body", markup=False)
 
 
+# -- the commands this screen started ------------------------------------------------------------
+
+
+def _short_time(stamp: str | None) -> str:
+    """``2026-11-20T02:17:43Z`` -> ``11-20 02:17:43Z`` (UTC, as recorded)."""
+    return stamp[5:].replace("T", " ") if stamp else "?"
+
+
+def _state_style(text: str) -> str:
+    if text == "running":
+        return PALETTE["accent"]
+    if text.startswith(("exit 0", "record not", "ended")):
+        return PALETTE["muted"] if not text.startswith("exit 0") else PALETTE["ok"]
+    if "FAIL" in text:  # a judged violation: the run's verdict, not an error of the screen
+        return PALETTE["warn"]
+    return PALETTE["text"]
+
+
+class LaunchesScreen(ModalScreen[str | None]):
+    """Commands started from this TUI (their launch records), newest first: the command, its state
+    (running, or the exit code with the CLI's meaning) and the tail of what it printed. Read every
+    second; Enter on one dismisses with its ``--out`` folder (or ``None``) so the app can go there.
+    """
+
+    BINDINGS = [Binding("escape,q", "dismiss(None)", "close")]
+
+    def __init__(self, records: Callable[[], Sequence[launch_records.Launch]]) -> None:
+        super().__init__()
+        self._records = records
+        self._shown: list[launch_records.Launch] = []
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="launches", classes="run-box") as box:
+            box.border_title = "my commands"
+            box.border_subtitle = "started from this screen · enter: go to its folder · esc: close"
+            yield DataTable(id="launches-table", cursor_type="row")
+            yield VerticalScroll(Static("", id="launch-detail", markup=False), id="launch-box")
+
+    def on_mount(self) -> None:
+        table = self.query_one("#launches-table", DataTable)
+        table.add_columns("started (UTC)", "command", "state")
+        self.reload()
+        self.set_interval(1.0, self.reload)
+
+    def reload(self) -> None:
+        table = self.query_one("#launches-table", DataTable)
+        cursor = table.cursor_row
+        self._shown = list(self._records())
+        table.clear()
+        if not self._shown:
+            table.add_row("—", "nothing started from this screen yet (n: run a command)", "")
+        for record in self._shown:
+            state = launch_records.state_text(record)
+            command = " ".join(record.argv[1:]) or "?"
+            table.add_row(_short_time(record.started_at), command[:70],
+                          Text(state, style=_state_style(state)))  # fmt: skip
+        if self._shown:
+            table.move_cursor(row=min(max(cursor, 0), len(self._shown) - 1))
+        self._show_detail()
+
+    def _selected(self) -> launch_records.Launch | None:
+        cursor = self.query_one("#launches-table", DataTable).cursor_row
+        return self._shown[cursor] if 0 <= cursor < len(self._shown) else None
+
+    def _show_detail(self) -> None:
+        record = self._selected()
+        body = self.query_one("#launch-detail", Static)
+        if record is None:
+            body.update("")
+            return
+        lines = [
+            shlex.join(record.argv),  # the raw command, on one line, to copy
+            f"in {record.cwd}",
+            f"started {record.started_at or '?'} · ended {record.ended_at or '—'}",
+            f"state {launch_records.state_text(record)}",
+            f"record {record.folder}",
+            "",
+            *launch_records.output_tail(record, 20),
+        ]
+        body.update("\n".join(lines))
+
+    def on_data_table_row_highlighted(self, message: DataTable.RowHighlighted) -> None:
+        self._show_detail()
+
+    def on_data_table_row_selected(self, message: DataTable.RowSelected) -> None:
+        record = self._selected()
+        if record is None:
+            return
+        argv = list(record.argv)
+        out = argv[argv.index("--out") + 1] if "--out" in argv[:-1] else None
+        self.dismiss(str(Path(record.cwd) / out) if out else None)
+
+
 _SURFACE, _PANEL, _RAISED = PALETTE["surface"], PALETTE["surface_alt"], PALETTE["surface_raised"]
 RUN_CSS = f"""
-CommandPicker, CommandFormScreen, ConfirmScreen, OutputScreen {{
+CommandPicker, CommandFormScreen, ConfirmScreen, OutputScreen, LaunchesScreen {{
     align: center middle; background: {_SURFACE} 60%;
 }}
 .run-box {{
@@ -447,4 +542,10 @@ CommandPicker, CommandFormScreen, ConfirmScreen, OutputScreen {{
 #confirm-notes {{ height: auto; margin: 1 0 0 0; }}
 #confirm-plan {{ height: auto; max-height: 12; }}
 #output {{ width: 100; max-width: 100%; height: 90%; }}
+#launches {{ width: 110; max-width: 100%; height: 90%; }}
+#launches-table {{ height: auto; max-height: 12; background: {_PANEL}; }}
+#launches-table > .datatable--header {{ background: {_PANEL}; color: {PALETTE["muted"]}; }}
+#launches-table > .datatable--cursor {{ background: #164e63; }}
+#launch-box {{ height: 1fr; margin-top: 1; }}
+#launch-detail {{ color: {PALETTE["text"]}; }}
 """

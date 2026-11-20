@@ -243,3 +243,39 @@ def run_plan(
     if code is None:
         output = output.replace("(no answer after", "(no plan after")
     return code, output
+
+
+#: What an exit code says, by the CLI's documented outcome (``RunOutcome``); FAIL is a verdict.
+OUTCOME_TEXT = {
+    RunOutcome.PASS: "PASS",
+    RunOutcome.FAIL: "FAIL (a violation was judged)",
+    RunOutcome.ERROR: "ERROR (no verdict)",
+    RunOutcome.REFUSED: "refused before anything ran",
+    RunOutcome.COMPLETE: "every round ran",
+    RunOutcome.INCOMPLETE: "not every round ran",
+    RunOutcome.UNSUPPORTED: "unsupported",
+}
+
+
+def alive(pid: int | None) -> bool:
+    """Whether a process with this id exists (signal 0 asks without sending anything)."""
+    if pid is None:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def state_text(record: Launch) -> str:
+    """``running``, the exit code with its meaning, or ``ended (no exit code recorded)``."""
+    if record.error and not record.argv:
+        return f"record not readable ({record.error})"
+    if record.exit_code is None:
+        return "running" if alive(record.pid) else "ended (no exit code recorded)"
+    outcome = record.outcome()
+    meaning = OUTCOME_TEXT.get(outcome) if outcome is not None else None
+    return f"exit {record.exit_code}" + (f" · {meaning}" if meaning else "")

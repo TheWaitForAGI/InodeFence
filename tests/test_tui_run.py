@@ -306,3 +306,39 @@ def test_required_and_common_fields_come_before_more_options() -> None:
     main, more = ordered_fields(command_forms()["explore"])
     assert [f.dest for f in main][:5] == ["version", "target", "budget", "seed", "auto_prepare"]
     assert {"profile", "dry_run", "verbose", "quiet"} <= {f.dest for f in more}
+
+
+@_sync
+async def test_my_commands_shows_running_then_the_code_and_goes_to_the_folder(
+    setup, monkeypatch
+) -> None:
+    from inodefence.ui.tui.screens_run import LaunchesScreen
+
+    monkeypatch.setenv("FAKE_SLEEP", "1.5")
+    monkeypatch.setenv("FAKE_EXIT", "1")
+    app = setup["app"]
+    out = setup["tmp"] / "elsewhere"
+    async with app.run_test(size=(140, 44)) as pilot:
+        form = await _to_form(app, pilot, "explore")
+        _fill(form, version="latest", out=str(out))
+        await _press(app, pilot, "form-continue")
+        await _press(app, pilot, "confirm-start")
+        await pilot.press("l")
+        await pilot.pause()
+        assert isinstance(app.screen, LaunchesScreen)
+        deadline = time.monotonic() + 10
+        detail = ""
+        while "state running" not in detail and time.monotonic() < deadline:
+            app.screen.reload()
+            detail = str(app.screen.query_one("#launch-detail", Static).content)
+            await pilot.pause(0.05)
+        assert "state running" in detail
+        assert f"inodefence explore --version latest --out {out}" in detail  # one line, to copy
+        launch.wait(app.launches[0], timeout=20)
+        app.screen.reload()
+        detail = str(app.screen.query_one("#launch-detail", Static).content)
+        assert "exit 1 · FAIL (a violation was judged)" in detail
+        assert "fake inodefence explore" in detail  # the output tail
+        await pilot.press("enter")
+        await pilot.pause()
+        assert not isinstance(app.screen, LaunchesScreen)  # back, at its folder if read there

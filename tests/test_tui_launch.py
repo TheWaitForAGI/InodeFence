@@ -173,3 +173,19 @@ def test_only_commands_that_run_nothing_are_waited_for(
     for argv in (["inodefence", "explore", "--version", "latest"], ["inodefence", "replay", "x"]):
         with pytest.raises(ValueError):
             launch.run_waited(argv, cwd=tmp_path, executable=fake["program"])
+
+
+def test_the_state_says_running_ended_or_the_code_and_its_meaning(
+    fake: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("FAKE_SLEEP", "1.5")
+    monkeypatch.setenv("FAKE_EXIT", "1")
+    started = _start(fake, ["inodefence", "explore", "--version", "latest"], tmp_path)
+    deadline = time.monotonic() + 10
+    while launch.read_launch(started.folder).pid is None and time.monotonic() < deadline:
+        time.sleep(0.05)
+    assert launch.state_text(launch.read_launch(started.folder)) == "running"
+    done = launch.wait(started, timeout=20)
+    assert launch.state_text(done) == "exit 1 · FAIL (a violation was judged)"
+    gone = launch.Launch(done.folder, done.argv, done.cwd, done.started_at, None, None, 2**22 + 7)
+    assert launch.state_text(gone) == "ended (no exit code recorded)"

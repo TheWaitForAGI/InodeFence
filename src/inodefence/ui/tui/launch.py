@@ -215,6 +215,7 @@ def run_plan(
             timeout=timeout, check=False,
         )  # fmt: skip
     except subprocess.TimeoutExpired as error:
-        out = error.stdout if isinstance(error.stdout, str) else ""
+        raw = error.stdout  # text=True gives str, but the exception's type allows bytes too
+        out = raw.decode(errors="replace") if isinstance(raw, bytes) else str(raw or "")
         return None, out + f"\n(no plan after {timeout:.0f} s)"
     return done.returncode, (done.stdout or "") + (done.stderr or "")

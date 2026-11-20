@@ -149,3 +149,14 @@ def test_a_plan_is_the_same_command_with_dry_run(
     launch.run_plan([*argv, "--dry-run"], cwd=tmp_path, executable=fake["program"])
     last = json.loads(fake["argv_log"].read_text().splitlines()[-1])
     assert last.count("--dry-run") == 1  # never added twice
+
+
+def test_a_plan_that_does_not_finish_in_time_says_so(
+    fake: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("FAKE_SLEEP", "3")
+    code, output = launch.run_plan(
+        ["inodefence", "explore", "--version", "latest"],
+        cwd=tmp_path, executable=fake["program"], timeout=0.5,
+    )  # fmt: skip
+    assert code is None and "no plan after" in output

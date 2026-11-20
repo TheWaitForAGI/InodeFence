@@ -17,6 +17,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from tests.git_checkout import head_or_none
 
 REPO = Path(__file__).resolve().parents[1]
 DRIVERS = REPO / "src" / "inodefence" / "drivers"
@@ -140,10 +141,9 @@ def _fake_clone(path: Path) -> Path:
     return path
 
 
-def _head() -> str:
-    return subprocess.run(
-        ["git", "rev-parse", "HEAD"], cwd=REPO, capture_output=True, text=True, check=True
-    ).stdout.strip()
+def _head() -> str | None:
+    """HEAD, or None outside a git checkout: then the engine records no revision (None)."""
+    return head_or_none()
 
 
 def test_constants_are_the_checkout_the_scripts_drivers_used() -> None:
@@ -229,7 +229,7 @@ def test_cli_style_subprocess_runs_the_chosen_clone_consistently(tmp_path: Path)
     )
     assert done.returncode == 0, done.stderr
     chosen, root, constant, sha = done.stdout.split()
-    assert chosen == root == constant == str(REPO) and sha == _head()
+    assert chosen == root == constant == str(REPO) and sha == str(_head())
 
 
 def test_launcher_passes_the_hook_call_through_unchanged(tmp_path: Path) -> None:

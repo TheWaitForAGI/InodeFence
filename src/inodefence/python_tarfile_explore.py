@@ -27,9 +27,14 @@ from hashlib import sha256
 from time import perf_counter
 from typing import Any
 
-from inodefence.builder import build_tar
+from inodefence.builder import BUILDER_FORMAT, build_tar
+from inodefence.campaign_hooks import CampaignHooks, LightCampaignResult
 from inodefence.effect_campaign import EffectCampaignConfig, run_effect_campaign
-from inodefence.effect_demo import EffectStepReporter, effect_campaign_report
+from inodefence.effect_demo import (
+    DEMO_REPORT_SCHEMA,
+    EffectStepReporter,
+    effect_campaign_report,
+)
 from inodefence.effect_pipeline_python_tarfile import run_python_tarfile_contained_case
 from inodefence.evaluation.rds import (
     VOCABULARY_MUTATION_POLICY,
@@ -39,11 +44,12 @@ from inodefence.evaluation.rds import (
 )
 from inodefence.execution.base import ExecutionBackend
 from inodefence.feedback import EffectSearchPolicy
-from inodefence.generator import SeedCorpusId, minimal_seed_corpus
+from inodefence.generator import SeedCorpusId, minimal_seed_corpus, seed_corpus_label
 from inodefence.model import ArchiveCase, EffectRunResult, ExecutionStatus
 from inodefence.mutator import MutationPolicy
 from inodefence.mutator.policy import SEED_CORPUS
 from inodefence.runtime import SentinelSpec
+from inodefence.targets.identity_schedule import apply_identity_schedule, finish_identity_schedule
 from inodefence.targets.python_tarfile_contained import (
     PythonTarfileContainedTarget,
     worker_reported_status,
@@ -94,17 +100,16 @@ def run_unjudged(result: EffectRunResult) -> bool:
     1. The oracle saw a violation in the snapshots -> judged, always (kept with its input, read as
        "reproduction check needed" when the run was not clean).
     2. Otherwise unjudged when: the worker report is unreadable or contradicts the exit status
-       (crash, truncation) for a non-timeout run; the run ``timed_out``; or it is a ``success`` of a
-       non-empty archive whose trace is not intact.
+       (crash, truncation) for a non-timeout run; the run ``timed_out``; or it is a ``success``
+       whose trace is not intact. A complete trace needs the worker's own member count to equal
+       the entries (#533), so an empty archive's success is intact exactly when the worker
+       reports ``members: 0``.
     3. A ``rejected`` run, and a ``failed`` run whose report agrees (see
-       :data:`REPORTED_FAILURE_IS_JUDGED`), stays judged; so does an empty archive (incomplete
-       trace by construction, nothing to extract).
+       :data:`REPORTED_FAILURE_IS_JUDGED`), stays judged.
 
-    Known mismatch (#533, observed 2026-11-18 on 3.12.16 ``data``): this empty-archive exception
-    exists only here. The report's per-step ``validity``
-    (``effect_demo.observer_integrity_validity``) has no such exception and records a successful
-    empty-archive run as ``invalid`` (``observer_integrity``), because the trace reader marks a
-    zero-entry success incomplete. The exception is not widened to cover it; the fix is #533.
+    The same rule decides the report's per-step ``validity``
+    (``effect_demo.observer_integrity_validity``: a ``success`` without an intact trace is
+    invalid), so the two records agree; there is no empty-archive exception (#533).
     """
     base = result.base_result
     status = base.execution.status
@@ -116,11 +121,7 @@ def run_unjudged(result: EffectRunResult) -> bool:
         return True
     if status is ExecutionStatus.FAILED:
         return not REPORTED_FAILURE_IS_JUDGED
-    return (
-        status is ExecutionStatus.SUCCESS
-        and bool(base.case.entries)
-        and not result.trace.integrity_valid
-    )
+    return status is ExecutionStatus.SUCCESS and not result.trace.integrity_valid
 
 
 def case_record(run_index: int, result: EffectRunResult) -> dict[str, object]:
@@ -169,19 +170,30 @@ def python_tarfile_exploration_report(
     allow_fully_trusted: bool = False,
     step_sink: Callable[[dict[str, object]], None] | None = None,
     requested_spec: str | None = None,
+    identity_check_every: int | None = None,
+    stream: bool = True,
 ) -> dict[str, Any]:
     """Run the shared effect loop on one prepared python runtime image and one filter.
 
+    ``identity_check_every`` (FAST exploration only, #536): probe the image identity every N cases
+    and at the end instead of before every case; ``None`` keeps the per-case probe (STRICT).
+
+    ``stream`` (default, #542): the loop keeps no step in memory; the report then has no ``steps``
+    (they went to ``step_sink``, the controller's ``.steps.jsonl``) and says ``streaming: true``.
+    ``stream=False`` is the retaining run (full ``steps`` in the report), kept as the comparison
+    baseline: both give the same ``case_records``, ``violation_inputs`` and retained corpus.
+
     A mutation policy bound to a seed corpus other than the registered one (v2.1
-    ``minimal-empty-reg-v1``) is refused before the target is bound: its empty-archive seed is
-    recorded invalid on this target (#533; W4: not used off node-tar until fixed). The v2 policy
-    on the registered corpus is accepted as before.
+    ``minimal-empty-reg-v1``) is refused before the target is bound: no exploration plan is
+    approved for it on this target (W4). The earlier reason, the empty-archive seed recorded
+    invalid here, is resolved (#533). The v2 policy on the registered corpus is accepted as before.
     """
     if SEED_CORPUS.get(mutation_policy, SeedCorpusId.REGISTERED) != SeedCorpusId.REGISTERED:
         raise ValueError(
-            f"{mutation_policy.value} binds a non-registered seed corpus; it is not supported "
-            "by the python-tarfile loop until #533 is fixed "
-            "(등록 코퍼스가 아닌 v2.1 코퍼스 정책은 이 대상 루프에서 지원하지 않는다)"
+            f"{mutation_policy.value} binds a non-registered seed corpus; the python-tarfile "
+            "loop refuses it because no exploration plan is approved for it "
+            "(the #533 reason is resolved) "
+            "(v2.1(비등록 코퍼스)은 승인된 탐색 계획이 없어 거부한다(#533 사유는 해소))"
         )
     if extraction_filter == "fully_trusted" and not allow_fully_trusted:
         raise ValueError(
@@ -191,6 +203,7 @@ def python_tarfile_exploration_report(
     target = PythonTarfileContainedTarget.bind(
         backend, image_id, extraction_filter, expected_python=expected_python
     )
+    target, schedule = apply_identity_schedule(target, identity_check_every)
     config = EffectCampaignConfig(
         random_seed=seed,
         execution_budget=budget,
@@ -199,9 +212,15 @@ def python_tarfile_exploration_report(
     )
     case_records: list[dict[str, object]] = []
     violation_inputs: list[dict[str, object]] = []
+    # The loop's step counter, as seen through ``record_step`` (every step, a build-invalid one
+    # included, D060). A case's ``run_index`` is the index of the step it runs in, so case
+    # "step-N", its saved input and line N of ``.steps.jsonl`` agree, and the first-violation
+    # rank counts steps as node-tar does. Without a build-invalid step it equals
+    # ``len(case_records)``, so v1 policies number exactly as before.
+    steps_seen = [0]
 
     def produce(case: ArchiveCase) -> EffectRunResult:
-        run_index = len(case_records)
+        run_index = steps_seen[0]
         result = run_python_tarfile_contained_case(case, target, sentinels=sentinels)
         record = case_record(run_index, result)
         case_records.append(record)
@@ -219,15 +238,36 @@ def python_tarfile_exploration_report(
     reporter = EffectStepReporter()
 
     def record_step(step) -> None:  # type: ignore[no-untyped-def]
+        if step.index != steps_seen[0]:
+            raise RuntimeError(
+                f"loop step {step.index} arrived when step {steps_seen[0]} was expected"
+            )
+        steps_seen[0] += 1
         line = reporter.add(step)
         if step_sink is not None:
             step_sink(line)
 
     started = perf_counter()
-    result = run_effect_campaign(minimal_seed_corpus(), produce, config, on_step=record_step)
+    corpus = minimal_seed_corpus()
+    # Streaming (#542): the loop keeps no step in memory (each one went to ``record_step`` and the
+    # controller's ``.steps.jsonl``), so memory no longer grows with full per-step snapshots and
+    # traces. ``case_records`` (one small verdict record per case) stays, so the common result
+    # built from it is byte-identical to the retaining run.
+    if stream:
+        light = run_effect_campaign(
+            corpus, produce, config, hooks=CampaignHooks(on_step=record_step, retain_steps=False)
+        )
+        assert isinstance(light, LightCampaignResult)
+    else:
+        full = run_effect_campaign(corpus, produce, config, on_step=record_step)
+    identity_record = finish_identity_schedule(target, schedule)  # FAST: mismatch raises
     total = perf_counter() - started
     undetermined = sum(1 for record in case_records if record["outcome"] == "run_error")
-    report = effect_campaign_report(result, "native-python-tarfile-container")
+    report = (
+        _streaming_report(config, light, tuple(case.case_id for case in corpus))
+        if stream
+        else effect_campaign_report(full, PRODUCER)
+    )
     report.update(
         label=EXPLORATION_LABEL,
         mode="exploration",
@@ -255,4 +295,39 @@ def python_tarfile_exploration_report(
         undetermined_steps=undetermined,
         all_undetermined=bool(case_records) and undetermined == len(case_records),
     )
+    report.update(identity_record)
     return report
+
+
+PRODUCER = "native-python-tarfile-container"
+
+
+def _streaming_report(
+    config: EffectCampaignConfig, result: LightCampaignResult, initial_case_ids: tuple[str, ...]
+) -> dict[str, Any]:
+    """The loop report's common part without per-step records (#542).
+
+    The same keys as ``effect_campaign_report`` except the three derived from retained steps
+    (``steps``, ``observer_integrity_summary``, ``final_search_stats``), plus ``streaming: true``.
+    The steps are in the controller's ``<report>.steps.jsonl`` (one line per step, written as each
+    step completes), which is where step readers such as ``scripts/compare_fast_strict.py`` look
+    first.
+    """
+    return {
+        "demo_report_schema": DEMO_REPORT_SCHEMA,
+        "producer": PRODUCER,
+        "streaming": True,
+        "mutation_policy": config.mutation_policy.value,
+        "config": {
+            "random_seed": config.random_seed,
+            "execution_budget": config.execution_budget,
+            "search_policy": config.search_policy.value,
+            "mutation_policy": config.mutation_policy.value,
+            "build_invalid": config.build_invalid_policy.value,
+            "builder_format": BUILDER_FORMAT,
+            "seed_corpus": seed_corpus_label(initial_case_ids),
+        },
+        "initial_case_ids": list(initial_case_ids),
+        "retained_case_ids": list(result.retained_case_ids),
+        "executed": result.executed,
+    }

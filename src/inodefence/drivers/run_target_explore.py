@@ -20,6 +20,7 @@ FOUND A BOUNDARY VIOLATION ON A MAINTAINED VERSION? Handle it responsibly, in or
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import json
 import os
 import sys
@@ -29,6 +30,10 @@ from inodefence.drivers import progress as progress_display
 from inodefence.drivers.repo import code_checkout, require_repository_or_exit
 from inodefence.drivers.run_target import (
     DEFAULT_MAX_UNJUDGED_RATIO,
+    EXPLORE_MUTATION_POLICIES,
+    FAST_PER_CASE_IDENTITY,
+    FAST_PER_CASE_IDENTITY_TARGETS,
+    MUTATION_POLICY_TARGETS,
     TARGETS,
     ExploreOptions,
     PreparedTargetImage,
@@ -41,9 +46,13 @@ from inodefence.drivers.run_target import (
     resolve_images,
     with_tag_suffix,
 )
-from inodefence.drivers.runtime.policy import PROFILES, STRICT
+from inodefence.drivers.runtime.policy import PROFILES, STRICT, RuntimeProfile
 from inodefence.drivers.runtime.session import RuntimeSession
-from inodefence.target_result import load_target_result, no_extraction_warning
+from inodefence.target_result import (
+    FAST_ACCEPTANCE_NOT_MEASURED,
+    load_target_result,
+    no_extraction_warning,
+)
 
 # Outside the repo AND outside ~/inodefence-evidence (confirmatory evidence lives there).
 DEFAULT_OUT = Path.home() / "inodefence-explore"
@@ -145,6 +154,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--image-tag-suffix", default="")
     parser.add_argument(
+        "--mutation-policy",
+        choices=EXPLORE_MUTATION_POLICIES,
+        default=None,
+        help="node-tar and python-tarfile, exploratory: run this mutation policy instead of the "
+        "default "
+        "(recorded in result.json's campaign block)",
+    )
+    parser.add_argument(
         "--auto-prepare",
         action="store_true",
         help="prepare (resolve/build/verify) the image; required for a real run",
@@ -194,6 +211,16 @@ def main(argv: list[str] | None = None) -> int:
             f"TARGET-EXPLORE: exploration is not supported for {args.target} yet", file=sys.stderr
         )
         return 3
+    if args.mutation_policy is not None and args.target not in MUTATION_POLICY_TARGETS:
+        # Refused here, before any image or controller (the loop's own refusal comes only after the
+        # controller started, exit 2): the v2 grammar policy runs only in node-tar exploration.
+        print(
+            f"TARGET-EXPLORE SETUP: --mutation-policy {args.mutation_policy} is available only "
+            f"for {', '.join(MUTATION_POLICY_TARGETS)} exploration, not {args.target} "
+            "(nothing was prepared or run)",
+            file=sys.stderr,
+        )
+        return 3
 
     # The target's own version/option validation (the same ``cells`` verify uses), also on
     # --dry-run, so a malformed version is refused (3) before a plan is printed.
@@ -208,6 +235,20 @@ def main(argv: list[str] | None = None) -> int:
         parser.error(f"--budget must be >= {min_budget} for {args.target} (the loop's seed count)")
 
     policy = PROFILES[args.profile]
+    if policy.profile is RuntimeProfile.FAST and args.target in FAST_PER_CASE_IDENTITY_TARGETS:
+        # D065: keep the rebuild skip, drop the D064 interval (a probe before every case).
+        policy = dataclasses.replace(policy, identity_check_every=None)
+        reason = (
+            f" (no FAST acceptance for {args.target})"
+            if FAST_PER_CASE_IDENTITY[args.target] == FAST_ACCEPTANCE_NOT_MEASURED
+            else ""
+        )
+        print(
+            f"TARGET-EXPLORE: --profile fast on {args.target} skips the shared-image rebuild "
+            f"only; the D064 identity-probe interval is not applied{reason}, so the image "
+            "identity is probed before every case.",
+            file=sys.stderr,
+        )
     if args.dry_run:
         plan = {
             "target": args.target,
@@ -220,6 +261,8 @@ def main(argv: list[str] | None = None) -> int:
         }
         if policy is not STRICT:  # the default plan is unchanged
             plan["runtime_profile"] = {"profile": policy.profile.value, "policy": policy.flags()}
+        if args.mutation_policy is not None:  # likewise: only when the option was given
+            plan["mutation_policy"] = args.mutation_policy
         print(json.dumps(plan, indent=2, sort_keys=True))
         return 0
     if not args.auto_prepare:
@@ -274,6 +317,7 @@ def main(argv: list[str] | None = None) -> int:
                 target_options=target_options,
                 max_unjudged_ratio=args.max_unjudged_ratio,
                 runtime=session,
+                mutation_policy=args.mutation_policy,
             ),
         )
         result_written = True

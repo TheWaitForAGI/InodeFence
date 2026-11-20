@@ -15,6 +15,7 @@ from types import SimpleNamespace
 import pytest
 from scripts.effect_replay import node_tar_conditions, run_rounds
 from scripts.run_effect_demo import NativeDemoAborted
+from tests.git_checkout import head_or_none
 
 import inodefence.drivers.run_target_replay as driver
 from inodefence import cli
@@ -209,6 +210,27 @@ def test_rates_are_over_judged_rounds_and_kept_separate() -> None:
     assert summary["fingerprint_match_rate"] == 0.333333
 
 
+def test_without_original_fingerprints_the_fingerprint_match_is_not_comparable() -> None:
+    """#494: a result folder (python-tarfile, decompress, oras-go) stores no fingerprints, so the
+    match is "not comparable" -- never 0 matches -- in replay.json and in the one-line brief."""
+    original = {"c0": False, "c1": True, "c2": None, "fingerprints": []}
+    rounds = [normalize_round(_round(fps=()), i + 1) for i in range(3)]
+    summary = summarize_rounds(original, rounds)
+    assert summary["same_contracts"] == 3
+    assert summary["fingerprints_comparable"] is False
+    assert summary["same_fingerprints"] is None
+    assert summary["fingerprint_match_rate"] is None
+    record = {"replay": {"complete": True, "rounds_requested": 3}, "summary": summary}
+    assert replay_brief(record) == "replayed 3/3: same contracts 3/3, fingerprints n/a"
+
+
+def test_with_original_fingerprints_the_match_stays_counted() -> None:
+    original = {"c0": False, "c1": True, "c2": None, "fingerprints": ["C1-aa"]}
+    summary = summarize_rounds(original, [normalize_round(_round(), 1)])
+    assert summary["fingerprints_comparable"] is True
+    assert (summary["same_fingerprints"], summary["fingerprint_match_rate"]) == (1, 1.0)
+
+
 def test_record_is_published_beside_the_case_and_never_overwrites(tmp_path: Path) -> None:
     folder = _case_folder(tmp_path)
     before = {p.name: p.read_bytes() for p in folder.iterdir()}
@@ -357,7 +379,12 @@ def test_driver_runs_records_and_status_shows_it(tmp_path: Path, monkeypatch, ca
     out = capsys.readouterr().out
     assert out.startswith("replayed 3/3: same contracts 3/3, fingerprints 3/3")
     (record,) = read_replays(folder)
-    assert record["replay"]["complete"] is True and record["replay"]["engine_commit"]
+    assert record["replay"]["complete"] is True
+    # The engine revision that ran: HEAD ("-dirty" when the tree has changes), or null when
+    # the code does not run from a git checkout (a tarball copy) -- never a guess.
+    head = head_or_none()
+    commit = record["replay"]["engine_commit"]
+    assert commit is None if head is None else commit in (head, f"{head}-dirty")
     status = render_live_status(folder.parent.parent, display="live")
     assert "replayed 3/3: same contracts 3/3" in status
 

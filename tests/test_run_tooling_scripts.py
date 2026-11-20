@@ -9,6 +9,7 @@ from scripts import fill_run_registration as fill
 from scripts import launcher_guards as guards
 from scripts import make_run_criteria as criteria
 from scripts import qualify_host
+from tests.git_checkout import require_git_checkout
 
 REPO = Path(criteria.__file__).resolve().parents[1]
 SHA = "a" * 40
@@ -159,6 +160,8 @@ def test_fill_refuses(tmp_path: Path, values: dict[str, str], message: str) -> N
 
 
 def test_fill_refuses_a_copy_inside_the_worktree(capsys: pytest.CaptureFixture[str]) -> None:
+    # The subject is the git worktree the copy would dirty; a tarball copy has none.
+    require_git_checkout("the refusal is about the git worktree (rev-parse --show-toplevel)")
     out = REPO / "experiments" / "configs" / "w1-347-never-written.md"
     argv = [str(QUAL), *[f"--set={k}={v}" for k, v in VALUES.items()], "--out", str(out)]
     assert fill.main(argv) == 2

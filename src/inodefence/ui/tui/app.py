@@ -244,6 +244,13 @@ class InodeFenceTui(App[None]):
         Binding("4", "show('findings')", "Flagged cases"),
         Binding("5", "show('artifacts')", "Artifacts"),
         Binding("n", "new_command", "Run…"),
+        # shortcuts into a form filled from the highlighted row (listed in help; footer stays short)
+        Binding("v", "shortcut('verify')", "verify", show=False),
+        Binding("e", "shortcut('explore')", "explore", show=False),
+        Binding("p", "shortcut('replay')", "replay", show=False),
+        Binding("s", "shortcut('status')", "status", show=False),
+        Binding("m", "shortcut('summary')", "summary", show=False),
+        Binding("c", "shortcut('compare')", "compare", show=False),
         Binding("r", "refresh_now", "Refresh"),
         Binding("question_mark", "help", "Help"),
         Binding("q", "quit", "Quit"),
@@ -274,6 +281,8 @@ class InodeFenceTui(App[None]):
         self._cwd = cwd
         #: commands this screen started, newest first (records under ``launch_root``)
         self.launches: list[launch.Launch] = []
+        #: the first result chosen for ``c`` (compare), until a second one is chosen
+        self._compare_a: Path | None = None
         self.roots = [*(default_roots() if roots is None else roots), *extra]
         self.refresh_seconds = refresh
         self.follower = follower or RunFollower(roots=self.roots, interval=refresh, clock=clock)
@@ -561,6 +570,66 @@ class InodeFenceTui(App[None]):
     def _workdir(self) -> Path:
         return self._cwd or Path.cwd()
 
+    def _active_tab(self) -> str:
+        return str(self.query_one("#tabs", TabbedContent).active)
+
+    def _highlighted(self, table: str) -> str | None:
+        keys = self._row_keys.get(table, [])
+        cursor = self.query_one(f"#{table}-table", DataTable).cursor_row
+        return keys[cursor] if 0 <= cursor < len(keys) and keys[cursor] != "-" else None
+
+    def shortcut_preset(self, command: str) -> tuple[dict[str, Any] | None, str | None]:
+        """The form values a shortcut fills from the highlighted row, or ``(None, why not)``."""
+        if command in ("verify", "explore"):
+            target = self._highlighted("targets") if self._active_tab() == "targets" else None
+            if target is None:
+                return None, f"{command}: highlight a target in Targets (2)"
+            return {"target": target}, None
+        if command == "replay":
+            key = self.selected_key or ""
+            pair = next(((snap, row) for snap, row in model.findings(self.state)
+                         if model.finding_key(snap, row) == key), None)  # fmt: skip
+            if pair is None:
+                return None, "replay: highlight a flagged case in Flagged cases (4)"
+            snapshot, row = pair
+            if row.input_path is None:
+                return None, f"replay: {row.case_id} has no saved input to replay"
+            if (
+                snapshot.summary is not None
+                and snapshot.summary.result_path is not None
+                and (row.input_path.is_relative_to(snapshot.summary.result_path.parent))
+            ):
+                return {"case_dir": str(snapshot.summary.result_path.parent),
+                        "case": row.case_id}, None  # fmt: skip
+            return {"case_dir": str(row.input_path.parent)}, None  # a live run-NNNNNN folder
+        snapshot = self._selected_snapshot()
+        if snapshot is None:
+            return None, f"{command}: highlight a run first"
+        result = snapshot.summary.result_path if snapshot.summary is not None else None
+        if command == "status":
+            if snapshot.ref.kind.value != "explore":
+                return None, "status: shows an exploration (highlight one in Campaigns)"
+            return {"folder": str(snapshot.ref.root)}, None
+        if result is None:
+            return None, f"{command}: this run has no result file yet"
+        if command == "summary":
+            return {"result": str(result)}, None
+        if command == "compare":
+            first = self._compare_a
+            if first is None or first == result:
+                self._compare_a = result
+                return None, f"compare: A is {result.parent.name}; press c on another run's result"
+            self._compare_a = None
+            return {"a": str(first), "b": str(result)}, None
+        return None, f"{command}: no shortcut"
+
+    def action_shortcut(self, command: str) -> None:
+        preset, why = self.shortcut_preset(command)
+        if preset is None:
+            self.notify(why or command, title="shortcut")
+            return
+        self._open_form(self._forms(), command, preset)
+
     def action_new_command(self) -> None:
         forms = self._forms()
         self.push_screen(CommandPicker(forms), lambda name: self._open_form(forms, name))
@@ -653,6 +722,11 @@ class InodeFenceTui(App[None]):
             ("↑ ↓ / j k", "move in a list; the panels follow the highlighted run"),
             ("enter", "candidate detail, or the artifacts of a run"),
             ("esc", "close a detail"),
+            ("n", "run a command: pick, fill, confirm"),
+            ("v / e", "Targets: verify / explore the highlighted target"),
+            ("p", "Flagged cases: replay the highlighted case"),
+            ("s / m", "a run: its status / its result's summary"),
+            ("c", "compare: press on one run's result, then on another"),
             ("r", "re-read now"),
             ("q", "quit"),
         ):

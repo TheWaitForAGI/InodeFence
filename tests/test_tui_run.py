@@ -209,3 +209,75 @@ async def test_the_picker_marks_the_commands_that_start_docker(setup) -> None:
             if "starts Docker" in str(options.get_option_at_index(i).prompt)
         }
         assert marked == {"verify", "explore", "replay"}
+
+
+@pytest.fixture
+def with_runs(setup) -> dict[str, Any]:
+    """An exploration result with a saved candidate, and a verify cell (both synthetic)."""
+    root = setup["app"].roots[0]
+    rid = syn.run_id()
+    result_dir = root / "target-explore" / f"{rid}-result"
+    res = syn.result(cases=[syn.case("step-1", False), syn.case("step-2", True)], saved=["step-2"])
+    syn.write_result(result_dir, res)
+    cell = root / "verify-cell"
+    syn.write_result(cell, syn.result(mode=syn.ResultMode.FIXTURE_REGRESSION,
+                                      cases=[syn.case("dir_symlink_write", False)]))  # fmt: skip
+    setup["app"].follower.poll_once()
+    return {**setup, "result": result_dir / "result.json", "cell": cell / "result.json",
+            "root": root}  # fmt: skip
+
+
+@_sync
+async def test_a_target_shortcut_fills_the_target(setup) -> None:
+    app = setup["app"]
+    async with app.run_test(size=(140, 44)) as pilot:
+        app.tick()
+        await pilot.press("2")
+        await pilot.pause()
+        table = app.query_one("#targets-table")
+        table.move_cursor(row=app._row_keys["targets"].index("python-tarfile"))
+        await pilot.press("e")
+        await pilot.pause()
+        assert isinstance(app.screen, CommandFormScreen) and app.screen.form.name == "explore"
+        assert app.screen.values()["target"] == "python-tarfile"
+
+
+@_sync
+async def test_run_shortcuts_fill_status_summary_compare_and_replay(with_runs) -> None:
+    app = with_runs["app"]
+    async with app.run_test(size=(140, 44)) as pilot:
+        app.tick()
+        await pilot.pause()
+        explore_key = next(
+            k for k, s in app.state.snapshots.items() if s.ref.kind.value == "explore"
+        )
+        verify_key = next(k for k, s in app.state.snapshots.items() if s.ref.kind.value == "verify")
+        app.selected_key = explore_key
+        assert app.shortcut_preset("status")[0] == {"folder": str(with_runs["root"])}
+        assert app.shortcut_preset("summary")[0] == {"result": str(with_runs["result"])}
+        first, why = app.shortcut_preset("compare")
+        assert first is None and why and "press c on another" in why
+        app.selected_key = verify_key
+        assert app.shortcut_preset("compare")[0] == {
+            "a": str(with_runs["result"]), "b": str(with_runs["cell"]),
+        }  # fmt: skip
+        assert app.shortcut_preset("status")[0] is None  # a verify cell has no status
+        app.selected_key = f"{explore_key}#step-2"
+        assert app.shortcut_preset("replay")[0] == {
+            "case_dir": str(with_runs["result"].parent), "case": "step-2",
+        }  # fmt: skip
+        await pilot.press("p")
+        await pilot.pause()
+        assert isinstance(app.screen, CommandFormScreen) and app.screen.form.name == "replay"
+        assert app.screen.values()["case"] == "step-2"
+
+
+@_sync
+async def test_a_shortcut_without_a_fitting_row_says_why_and_opens_nothing(setup) -> None:
+    app = setup["app"]
+    async with app.run_test(size=(140, 44)) as pilot:
+        await pilot.press("p")
+        await pilot.pause()
+        assert not isinstance(app.screen, CommandFormScreen)
+        preset, why = app.shortcut_preset("verify")  # not on the Targets tab
+        assert preset is None and why and "Targets" in why

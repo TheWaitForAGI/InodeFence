@@ -34,6 +34,8 @@ from inodefence.app.runs import (
 #: A ``running`` snapshot older than this is shown as stalled, not active.
 ACTIVE_MAX_AGE_SECONDS = 4 * LIVE_PULL_INTERVAL_SECONDS
 UNKNOWN = "?"
+#: an exploration seen only through its launcher log (no live folder, no result yet)
+RUNNING_NO_LIVE = "running · no live data"
 NONE = "—"
 
 # Cell styles (the app maps them to colours; the text never depends on them).
@@ -206,12 +208,15 @@ def run_state(snapshot: RunSnapshot, now: float) -> Cell:
         if summary.read_state is ReadState.NOT_READY:
             return Cell("result not ready", WARN)
         return Cell(f"result {summary.read_state.value}", WARN)
+    if snapshot.ref.kind is RunKind.EXPLORE and snapshot.ref.run_id is None and summary is None:
+        # listed from its launcher log alone: it has not ended (no runtime record after the log)
+        return Cell(RUNNING_NO_LIVE, ACCENT)
     # No live folder and no result: only node-tar writes running numbers, so this is not "stalled".
     return Cell("no live data", DIM)
 
 
 def is_active(snapshot: RunSnapshot, now: float) -> bool:
-    return run_state(snapshot, now).text == "running"
+    return run_state(snapshot, now).text in ("running", RUNNING_NO_LIVE)
 
 
 def is_stalled(snapshot: RunSnapshot, now: float) -> bool:
@@ -342,6 +347,7 @@ def overview_rows(state: DashboardState) -> list[Row]:
     explore, verify = _explore(state), _verify(state)
     all_findings = findings(state)
     needs = sum(r.finding is FindingClass.CANDIDATE_NEEDS_REPRO_CHECK for _, r in all_findings)
+    fixtures = sum(len(s.fixture_violations) for s in verify)
     unread = sum(item.read_state is not ReadState.OK for item in state.listings)
     engine = engine_cell(state)
     engine_text = engine.text if state.engine is None else f"{engine.text} · {state.engine[1]}"
@@ -369,6 +375,7 @@ def overview_rows(state: DashboardState) -> list[Row]:
         ("  needing a repro check", Cell(str(needs), WARN if needs else PLAIN), "live / result"),
         ("  by replay", Cell(replay_breakdown(state)), "replay.json"),
         ("replays", Cell(str(len(_replays(state)))), "replay.json"),
+        ("known fixtures violated (verify)", Cell(str(fixtures)), "result"),
         ("folders not read", Cell(str(unread), WARN if unread else PLAIN), "scan"),
     ]  # fmt: skip
     return [Row(label, (Cell(label), value, Cell(src, DIM))) for label, value, src in rows]
@@ -494,7 +501,8 @@ def verify_rows(state: DashboardState) -> list[Row]:
         if summary is None or not summary.has_values:
             state_text = summary.read_state.value if summary else "missing"
             cells = (Cell(text(snapshot.ref.run_id), ACCENT), Cell(state_text, WARN),
-                     Cell(UNKNOWN), Cell(UNKNOWN), Cell(UNKNOWN), Cell(NONE, DIM))  # fmt: skip
+                     Cell(UNKNOWN), Cell(UNKNOWN), Cell(UNKNOWN), Cell(UNKNOWN),
+                     Cell(NONE, DIM))  # fmt: skip
             rows.append(Row(snapshot.ref.key, cells))
             continue
         warning = Cell("no extraction", WARN) if summary.no_extraction_warning else Cell(NONE, DIM)
@@ -507,6 +515,7 @@ def verify_rows(state: DashboardState) -> list[Row]:
                     Cell(count(summary.executed)),
                     Cell(count(summary.errored), BAD if summary.errored else PLAIN),
                     Cell(count(summary.unjudged_steps), WARN if summary.unjudged_steps else PLAIN),
+                    Cell(str(len(summary.fixture_violations))),
                     warning,
                 ),
             )
@@ -851,6 +860,8 @@ def runs_list(state: DashboardState) -> list[Row]:
 def run_name(snapshot: RunSnapshot, limit: int = 22) -> str:
     """``target@version``, or the run id when the files do not name the target yet."""
     ref = snapshot.ref
+    if ref.kind is RunKind.EXPLORE and ref.run_id is None:
+        return shorten_middle(f"{ref.root.name} · id at end", limit)
     if ref.target is None:
         return shorten_middle(text(ref.run_id), limit)
     name = f"{ref.target}@{text(ref.version)}"

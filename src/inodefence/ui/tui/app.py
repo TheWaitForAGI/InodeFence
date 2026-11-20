@@ -52,7 +52,8 @@ COLUMNS = {
     "targets": ("target", "explore", "replay", "prepared images", "last verify"),
     "campaigns": ("run", "state", "runs/budget", "rate", "violations", "unjudged", "updated",
                   "source"),
-    "verify": ("cell", "verdict", "executed", "run errors", "unjudged", "warning"),
+    "verify": ("cell", "verdict", "executed", "run errors", "unjudged", "fixtures V",
+               "warning"),
     "findings": ("case", "C0", "C1", "C2", "class", "replay", "n/judged"),
 }  # fmt: skip
 #: Tables whose highlighted row selects the run the panels follow.
@@ -615,11 +616,14 @@ def campaign_view(
     if snapshot is None:
         graph.append("no explore run found", style=PALETTE["muted"])
     elif not known:
-        live = snapshot.progress is not None and snapshot.progress.source.value == "live"
-        graph.append(
-            "waiting for a second progress snapshot" if live else "no live data for this run",
-            style=PALETTE["muted"],
-        )
+        progress = snapshot.progress
+        live = progress is not None and progress.source.value == "live"
+        ended = progress.state if live and progress and progress.state != "running" else None
+        if ended:  # no more snapshots will come
+            line = f"{ended} · no progress snapshots observed by this screen"
+        else:
+            line = "waiting for a second progress snapshot" if live else "no live data for this run"
+        graph.append(line, style=PALETTE["muted"])
         if not live:
             graph.append("\n(only node-tar writes running numbers)", style=PALETTE["muted"])
     else:

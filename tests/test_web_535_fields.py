@@ -44,11 +44,20 @@ def test_web_tolerates_new_535_result_fields(tmp_path):
         (folder / item.tar_path).write_bytes(syn.TAR)
     (folder / "result.json").write_text(json.dumps(data), encoding="utf-8")
 
-    # a replay beside the run with #535's extra detector columns on the rounds: read_replay reads
-    # only the known fields, so the extra columns are ignored and the rounds table is unaffected.
-    rounds = [syn.judged_round(True), syn.failed_round()]
-    rounds[0]["additive_detectors"] = {"generalized_identity": False, "symlink_referent": None}
-    syn.replay(folder, {"c0": False, "c1": True, "c2": False}, rounds)
+    # a valid replay beside the run, then #535's extra detector column appended to a round AFTER
+    # the writer ran. The web reads replays with inodefence.app.runs.read_replay, which reads only
+    # the fields it knows (round/classification/termination/c0..c2) and ignores the rest -- so the
+    # extra column must not break it. (Appending after the write keeps the writer-side validator,
+    # case_replay.normalize_round, out of this read-side tolerance test.)
+    replay_path = syn.replay(
+        folder, {"c0": False, "c1": True, "c2": False}, [syn.judged_round(True), syn.failed_round()]
+    )
+    record = json.loads(replay_path.read_text(encoding="utf-8"))
+    record["rounds"][0]["additive_detectors"] = {
+        "schema": "inodefence-additive-detectors-v1",
+        "note": "a #535 detector column the read side has never parsed; it must be ignored",
+    }
+    replay_path.write_text(json.dumps(record), encoding="utf-8")
 
     client = TestClient(web.create_app(roots=[out]))
     runs = client.get("/api/runs")

@@ -307,7 +307,7 @@ TAR의 내용은 보내지 않습니다(경로와 기록된 SHA-256만). 값은 
 | Overview | 엔진 상태(`doctor` 요약), 실행 목록, 최근 위반 후보, 실행별 상세(`#/run/<id>`) |
 | Targets | 등록된 대상과 지원 범위, 준비된 이미지 묶음, 대상별 마지막 verify 결과(결과 파일의 수정 시각 기준. 기록된 실행 시각이 아님) |
 | Experiments | 탐색과 verify 실행: 상태 필터(running·stalled·finished·no result), 실행별 진행 막대(실행 수/예산. 시작·끝 시각은 기록되지 않아 시간축은 없음), 행을 고르면 상세(진행, 종료 상태, 후보) |
-| Flagged cases | Oracle이 표시한 케이스: 탐색의 위반 후보(C0·C1·C2, 분류, replay 결론)와, 따로, verify의 알려진 픽스처 위반 |
+| Flagged cases | Oracle이 표시한 케이스(제목 옆 "oracle flags · not confirmed"): 탐색의 위반 후보(C0·C1·C2, 분류, replay 결론)와, 따로, verify의 알려진 픽스처 위반 |
 | Replay | 재실행 기록(판정된 회차 기준의 같은 계약 수와 결론) |
 | Artifacts | 실행 하나의 파일·폴더 목록(메타데이터만; 심볼릭 링크는 따라가지 않고 링크로 표시) |
 

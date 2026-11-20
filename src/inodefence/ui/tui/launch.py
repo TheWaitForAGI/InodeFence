@@ -187,3 +187,34 @@ def wait(launch: Launch, timeout: float, poll: float = 0.05) -> Launch:
         time.sleep(poll)
         current = read_launch(launch.folder)
     return current
+
+
+#: How long the confirmation dialog waits for a ``--dry-run`` plan (it runs nothing).
+PLAN_TIMEOUT_SECONDS = 60.0
+
+
+def run_plan(
+    argv: Sequence[str],
+    *,
+    cwd: Path,
+    executable: Path | None = None,
+    timeout: float = PLAN_TIMEOUT_SECONDS,
+) -> tuple[int | None, str]:
+    """The same command with ``--dry-run`` (added if absent), waited for: ``(exit code, output)``.
+
+    For the confirmation dialog of a command that has ``--dry-run`` (verify, explore, replay):
+    the CLI prints its plan and runs nothing. ``None`` as the code when it did not finish in time.
+    """
+    if not argv or argv[0] != CLI_NAME:
+        raise ValueError(f"only `{CLI_NAME} ...` commands are planned, got {list(argv)!r}")
+    program = executable if executable is not None else find_cli()
+    planned = [str(program), *argv[1:]] + ([] if "--dry-run" in argv else ["--dry-run"])
+    try:
+        done = subprocess.run(  # noqa: S603 -- the CLI's own command, with --dry-run
+            planned, cwd=cwd, stdin=subprocess.DEVNULL, capture_output=True, text=True,
+            timeout=timeout, check=False,
+        )  # fmt: skip
+    except subprocess.TimeoutExpired as error:
+        out = error.stdout if isinstance(error.stdout, str) else ""
+        return None, out + f"\n(no plan after {timeout:.0f} s)"
+    return done.returncode, (done.stdout or "") + (done.stderr or "")

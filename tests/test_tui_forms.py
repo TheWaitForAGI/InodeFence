@@ -117,3 +117,9 @@ def test_only_an_empty_required_field_is_checked_here() -> None:
     missing = forms.missing_required(form, {"version": "3.12.16"}, "python-tarfile")
     assert missing == ["--extraction-filter"]
     assert forms.missing_required(form, {"version": "latest", "budget": -5}, "node-tar") == []
+
+
+def test_a_default_typed_as_text_is_not_written() -> None:
+    form = forms.command_forms()["explore"]
+    argv = forms.command_line(form, {"version": "latest", "budget": "20", "seed": "123"})
+    assert argv == ["inodefence", "explore", "--version", "latest"]

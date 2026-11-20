@@ -135,3 +135,17 @@ def test_only_the_launch_module_starts_processes() -> None:
         if _starts_processes(p)
     }  # fmt: skip
     assert starters == {"ui/tui/launch.py", "ui/tui/launch_wrapper.py"}
+
+
+def test_a_plan_is_the_same_command_with_dry_run(
+    fake: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("FAKE_EXIT", "0")
+    argv = ["inodefence", "verify", "--version", "7.5.2"]
+    code, output = launch.run_plan(argv, cwd=tmp_path, executable=fake["program"])
+    assert code == 0 and "fake inodefence verify --version 7.5.2 --dry-run" in output
+    (seen,) = [json.loads(line) for line in fake["argv_log"].read_text().splitlines()]
+    assert seen == [*argv[1:], "--dry-run"]
+    launch.run_plan([*argv, "--dry-run"], cwd=tmp_path, executable=fake["program"])
+    last = json.loads(fake["argv_log"].read_text().splitlines()[-1])
+    assert last.count("--dry-run") == 1  # never added twice

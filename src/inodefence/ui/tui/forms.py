@@ -208,6 +208,7 @@ def command_line(
             for item in items:
                 if item not in (None, ""):
                     argv += [flag, str(item)]
-        elif value not in (None, "") and (f.required or value != f.default):
+        # a form's text box gives "20" for the default 20: unchanged is unchanged, typed or not
+        elif value not in (None, "") and (f.required or str(value) != str(f.default)):
             argv += [flag, str(value)]
     return argv[:2] + positionals + argv[2:]  # positionals first, as the CLI's help shows them

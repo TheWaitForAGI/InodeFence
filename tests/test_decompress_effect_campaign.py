@@ -648,3 +648,47 @@ def test_violation_input_must_match_the_archive_that_ran() -> None:
     result = run_decompress_effect_campaign(_seeds(), produce, config)
     with pytest.raises(ValueError, match="rebuilt archive differs"):
         decompress_effect_campaign_report(result, producer="unit-test")
+
+
+# -- #542: streaming report collector gives the same report as the retained path ---------------
+
+
+@pytest.mark.parametrize("produce", [_benign_run, _violating_produce], ids=["benign", "violating"])
+@pytest.mark.parametrize("seed", [1, 7])
+def test_streaming_collector_report_is_byte_identical_to_the_retained_report(produce, seed) -> None:
+    from inodefence.campaign_hooks import CampaignHooks
+    from inodefence.decompress_effect_campaign import (
+        DecompressLightResult,
+        DecompressReportCollector,
+    )
+
+    config = DecompressEffectCampaignConfig(random_seed=seed, execution_budget=len(_seeds()) + 12)
+    full = run_decompress_effect_campaign(_seeds(), produce, config)
+    expected = decompress_effect_campaign_report(full, producer="unit-test", label="demo run")
+
+    collector = DecompressReportCollector(producer="unit-test", label="demo run")
+    light = run_decompress_effect_campaign(
+        _seeds(), produce, config, hooks=CampaignHooks(on_step=collector.add, retain_steps=False)
+    )
+    assert isinstance(light, DecompressLightResult)
+    streamed = collector.report(light)
+    as_bytes = lambda report: json.dumps(report, indent=2, sort_keys=True).encode()  # noqa: E731
+    assert as_bytes(streamed) == as_bytes(expected)
+    if produce is _violating_produce:
+        assert expected["discovered_violation"] is True and expected["violation_inputs"]
+
+
+def test_streaming_collector_refuses_a_result_that_does_not_match_its_steps() -> None:
+    from inodefence.campaign_hooks import CampaignHooks
+    from inodefence.decompress_effect_campaign import DecompressReportCollector
+
+    config = DecompressEffectCampaignConfig(random_seed=1, execution_budget=len(_seeds()) + 2)
+    collector = DecompressReportCollector(producer="unit-test")
+    light = run_decompress_effect_campaign(
+        _seeds(),
+        _benign_run,
+        config,
+        hooks=CampaignHooks(on_step=lambda s: None, retain_steps=False),
+    )
+    with pytest.raises(ValueError, match="collected 0 steps"):
+        collector.report(light)  # type: ignore[arg-type]

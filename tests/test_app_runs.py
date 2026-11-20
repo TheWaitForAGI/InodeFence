@@ -571,3 +571,43 @@ def test_a_running_node_tar_run_is_not_listed_twice(tmp_path: Path) -> None:
     syn.live_run(out, syn.run_id(1), [syn.step(1)])
     refs = [x.ref for x in runs.discover_runs([out]) if x.ref]
     assert [r.run_id for r in refs] == [syn.run_id(1)]
+
+
+def test_a_launcher_only_run_is_active_while_its_log_is_written(tmp_path: Path) -> None:
+    out = tmp_path / "pt-out"
+    log = _launcher_log(out)
+    (ref,) = [x.ref for x in runs.discover_runs([out]) if x.ref]
+    written = log.stat().st_mtime
+    snapshot = runs.read_run(ref, now=written + 30)
+    state = snapshot.launcher_state
+    assert state is not None and state.estimated and state.log == log
+    assert state.activity is runs.LaunchActivity.ACTIVE and state.age_seconds == pytest.approx(30)
+
+
+def test_a_launcher_only_run_gone_quiet_is_no_activity_not_running(tmp_path: Path) -> None:
+    out = tmp_path / "pt-out"
+    log = _launcher_log(out)
+    (ref,) = [x.ref for x in runs.discover_runs([out]) if x.ref]
+    later = log.stat().st_mtime + runs.LAUNCHER_QUIET_MAX_SECONDS + 1
+    state = runs.read_run(ref, now=later).launcher_state
+    assert state is not None and state.activity is runs.LaunchActivity.NO_ACTIVITY
+    assert (
+        runs.launcher_activity(0.0, runs.LAUNCHER_QUIET_MAX_SECONDS) is runs.LaunchActivity.ACTIVE
+    )
+
+
+def test_runs_with_their_own_folders_have_no_launcher_state(tmp_path: Path) -> None:
+    out = syn.explore_out(tmp_path)
+    _launcher_log(out, stamp="20000101T000000Z")
+    syn.live_run(out, syn.run_id(1), [syn.step(1)])
+    snapshot = runs.read_run(runs.RunRef(runs.RunKind.EXPLORE, out, syn.run_id(1)))
+    assert snapshot.launcher_state is None
+
+
+def test_the_quiet_limit_follows_the_launchers_build_deadline() -> None:
+    import re
+
+    script = Path(__file__).resolve().parents[1] / "scripts" / "launcher_bounded.sh"
+    match = re.search(r"^DEADLINE_BUILD=(\d+)", script.read_text(encoding="utf-8"), re.M)
+    assert match is not None
+    assert runs.LAUNCHER_QUIET_MAX_SECONDS == int(match[1]) + 120

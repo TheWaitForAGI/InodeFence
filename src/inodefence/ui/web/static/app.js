@@ -183,10 +183,12 @@ function toneChip(label, t, title) { return el("span", { class: `chip chip-${t} 
 function runState(s) {
   // an id-less run seen only through its launcher log: estimated, no numbers. ACTIVE = launching;
   // NO_ACTIVITY = quiet past any live phase, so counted as stalled, not running (matches the TUI).
+  // Labels match the TUI (est. live / est. quiet); `long` is the same sentence the TUI's campaign
+  // panel shows, with where the estimate comes from.
   if (s && s.launcher) {
     const age = s.launcher.age_seconds;
-    if (s.launcher.activity === "active") return { label: "launching", tone: "info", active: true, age, estimated: true };
-    return { label: "no activity", tone: "warn", active: false, stalled: true, age, estimated: true };
+    if (s.launcher.activity === "active") return { label: "est. live", tone: "info", active: true, age, estimated: true, long: `launching/running (from launcher log, last write ${fmtAge(age)})` };
+    return { label: "est. quiet", tone: "warn", active: false, stalled: true, age, estimated: true, long: `no activity (launcher log last written ${fmtAge(age)})` };
   }
   if (s && s.source === "live" && s.state === "running") {
     if (s.stalled === true) return { label: "stalled", tone: "warn", active: false, stalled: true, age: s.progress_age_seconds };
@@ -195,6 +197,14 @@ function runState(s) {
   }
   if (s && s.state) return { label: s.state, tone: tone(s.state), active: false };
   return null;
+}
+// Exploration candidates of one run, or null when they cannot be known yet (a run seen only
+// through its launcher log, or one never read): unknown is never shown as 0.
+function candCount(s) {
+  if (!s || s.launcher) return null;
+  const known = s.violations != null || s.verdict != null || s.executed != null;
+  const n = (s.candidates || 0) + (s.candidates_needs_repro || 0);
+  return known || n > 0 ? n : null;
 }
 function tailId(id, n) { id = id || ""; n = n || 12; return id.length > n ? "…" + id.slice(-n) : id || EM_DASH; }
 
@@ -365,7 +375,7 @@ function renderRunsTable(campaigns) {
     else { const fill = el("div", { class: "prog-fill" }, []); fill.style.width = `${pct}%`; progCell = el("div", { class: "row-flex", style: "justify-content:flex-end" }, [el("span", { class: "muted num", style: "margin-right:6px" }, [`${num(runsN)}/${num(budget)}`]), el("div", { class: "prog" }, [fill])]); }
     const rs = runState(s);
     const stateCell = rs
-      ? toneChip(rs.label, rs.tone, rs.age != null ? fmtAge(rs.age) : "")
+      ? toneChip(rs.label, rs.tone, rs.long || (rs.age != null ? fmtAge(rs.age) : ""))
       : (s && !s.verdict && r.target && r.target !== "node-tar"
           ? el("span", { class: "chip chip-sm chip-muted" }, ["no live data"])
           : el("span", { class: "dash" }, [EM_DASH]));
@@ -373,7 +383,7 @@ function renderRunsTable(campaigns) {
       s && s.verdict ? chip(s.verdict) : el("span", { class: "dash" }, [EM_DASH]),
       s && s.read_state === "unvalidated" ? chip("as stored", "chip-warn chip-sm", "result not validated by the strict reader") : null,
     ]);
-    const cand = s ? ((s.candidates || 0) + (s.candidates_needs_repro || 0)) : null;
+    const cand = candCount(s);
     const fullId = r.run_id || r.id || "";
     const idTail = fullId.length > 12 ? "…" + fullId.slice(-12) : fullId || EM_DASH;
     body.appendChild(el("tr", {}, [
@@ -396,15 +406,18 @@ function renderRunsTable(campaigns) {
 /* -- run detail (minimal) -- */
 function runDetailCards(data) {
   const snap = data.snapshot;
+  if (!snap) return [cardLabeled("summary", empty("this run could not be read", [dash(data.error)]))];
+  const rs = runState(data.status);
   const s = snap.summary || {};
   const p = snap.progress || {};
   // a verify cell records no termination counts: every key is None (unknown) -> "?", not 0/dropped.
   const termEntries = Object.entries(s.terminations || {});
   const terms = termEntries.length ? termEntries.map(([k, n]) => `${k} ${n == null ? "?" : n}`).join(", ") : null;
   const findings = (snap.findings || []).filter((f) => f.finding);
+  const fixtures = snap.fixture_violations || [];
   const rows = [
     ["kind", snap.ref.kind], ["target", snap.ref.target], ["version", snap.ref.version],
-    ["state", data.stalled === true ? "stalled" : p.state], ["runs / budget", (p.runs == null && p.budget == null) ? null : `${p.runs == null ? EM_DASH : p.runs} / ${p.budget == null ? EM_DASH : p.budget}`],
+    ["state", rs ? (rs.long || rs.label) : (data.stalled === true ? "stalled" : p.state)], ["runs / budget", (p.runs == null && p.budget == null) ? null : `${p.runs == null ? EM_DASH : p.runs} / ${p.budget == null ? EM_DASH : p.budget}`],
     ["runs/second", p.runs_per_second], ["verdict", s.verdict],
     ["validated", s.validated == null ? null : (s.validated === false ? "as stored (not validated)" : "validated")],
     ["executed", s.executed], ["unjudged steps", s.unjudged_steps],
@@ -412,6 +425,8 @@ function runDetailCards(data) {
     // only a run that was never read/started stays unknown.
     ["terminations", terms],
     ["candidates", s.verdict != null || s.executed != null || findings.length ? findings.length : null],
+    // a verify cell's known fixtures the oracle flagged: a controlled check, not candidates
+    ...(snap.ref.kind === "verify" ? [["fixtures violated (verify)", s.verdict != null || s.executed != null ? fixtures.length : null]] : []),
     ["result", s.result_path],
   ];
   const dl = el("div", { class: "rank-list" }, rows.map(([k, v]) => kv(k, v == null ? null : String(v))));
@@ -422,6 +437,14 @@ function runDetailCards(data) {
       el("div", { class: "row-flex" }, [...["c0", "c1", "c2"].map((k) => f[k] === true ? el("span", { class: "chip chip-bad chip-sm" }, [k.toUpperCase()]) : null).filter(Boolean), chip(f.finding, null, f.finding)]),
     ])));
     out.push(cardLabeled("candidates", list));
+  }
+  if (fixtures.length) {
+    const list = el("div", { class: "rank-list" }, fixtures.map((f) => el("div", { class: "rank-item" }, [
+      el("div", { class: "mono", style: "overflow:hidden;text-overflow:ellipsis" }, [dash(f.case_id)]),
+      el("div", { class: "row-flex" }, [...["c0", "c1", "c2"].map((k) => f[k] === true ? el("span", { class: "chip chip-bad chip-sm" }, [k.toUpperCase()]) : null).filter(Boolean),
+        el("span", { class: "chip chip-info chip-sm", title: "a known fixture the oracle flagged in a verify cell: a controlled reproduction, not an exploration candidate" }, ["FIXTURE"])]),
+    ])));
+    out.push(cardLabeled("fixtures violated (verify)", list));
   }
   return out;
 }
@@ -576,7 +599,9 @@ async function renderFindings(view) {
     item.addEventListener("click", () => { findingsSelected = { f, replay: rp || null }; rerender(); });
     return item;
   }));
-  const left = el("div", {}, [filters, shown.length ? list : empty("no findings match", []), truncNote(fd)]);
+  const none = anyFilter ? empty("no findings match", []) : empty("no candidates yet", ["no oracle-flagged exploration case in the scanned runs"]);
+  const notRead = (fd.unreadable || []).length ? el("div", { class: "note" }, [`${fd.unreadable.length} run(s) could not be read; see Runs for the reason`]) : null;
+  const left = el("div", {}, [filters, shown.length ? list : none, notRead, truncNote(fd)]);
   const right = findingsSelected ? findingDetail(findingsSelected.f, findingsSelected.replay) : el("div", { class: "card" }, [empty("select a finding", ["pick a candidate to see its contracts, input hash and replay rounds"])]);
   const label = anyFilter ? `candidates (${shown.length} of ${items.length}) · filtered` : `candidates (${shown.length})`;
   view.appendChild(el("div", { class: "split" }, [cardLabeled(label, left), cardLabeled("detail", right)]));
@@ -738,7 +763,7 @@ function experimentsTable(rows, onPick, compact, noCampaigns) {
       ...(compact ? [] : [el("td", { class: "mono" }, [dash(r.version)])]),
       el("td", { class: "r num nowrap" }, [s.runs == null && s.budget == null ? EM_DASH : `${num(s.runs)}/${num(s.budget)}`]),
       ...(compact ? [] : [el("td", { class: "r num" }, [s.runs_per_second == null ? EM_DASH : s.runs_per_second.toFixed(2)])]),
-      el("td", { class: "nowrap" }, [rs ? toneChip(rs.label, rs.tone, rs.age != null ? fmtAge(rs.age) : "") : (s.state ? chip(s.state) : el("span", { class: "dash" }, [EM_DASH]))]),
+      el("td", { class: "nowrap" }, [rs ? toneChip(rs.label, rs.tone, rs.long || (rs.age != null ? fmtAge(rs.age) : "")) : (s.state ? chip(s.state) : el("span", { class: "dash" }, [EM_DASH]))]),
       el("td", { class: "nowrap" }, [s.verdict ? chip(s.verdict) : (s.read_state === "unvalidated" ? chip("as stored", "chip-warn chip-sm") : el("span", { class: "dash" }, [EM_DASH]))]),
       el("td", { class: "mono muted", title: "termination counts (s/r/f/t)" }, [terms]),
     ];

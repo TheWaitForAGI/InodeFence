@@ -158,6 +158,11 @@ def _health_payload(cache: HealthCache) -> dict[str, Any]:
     }
 
 
+def _run_error(exc: BaseException) -> str:
+    """Why one run could not be served (shown with ``read_state: unreadable`` for that run only)."""
+    return f"could not read this run: {type(exc).__name__}: {exc}"
+
+
 def _listing_payload(listing: runs_app.RunListing) -> dict[str, Any]:
     ref = listing.ref
     return {
@@ -348,13 +353,18 @@ def build_app(
         runs: list[dict[str, Any]] = []
         for index, item in enumerate(with_ref):
             payload = _listing_payload(item)
+            payload["status"] = None
             if index < limit:
-                snapshot = read_snapshot(item.ref)  # type: ignore[arg-type]  (ref is not None)
-                payload["target"] = snapshot.ref.target or payload["target"]
-                payload["version"] = snapshot.ref.version or payload["version"]
-                payload["status"] = _run_status(snapshot)
-            else:
-                payload["status"] = None
+                try:  # one run's read or serialisation error must not take the list down (500)
+                    snapshot = read_snapshot(item.ref)  # type: ignore[arg-type]  (ref is not None)
+                    status = _run_status(snapshot)
+                    target = snapshot.ref.target or payload["target"]
+                    version = snapshot.ref.version or payload["version"]
+                except Exception as exc:  # noqa: BLE001
+                    payload["read_state"] = runs_app.ReadState.UNREADABLE.value
+                    payload["error"] = _run_error(exc)
+                else:
+                    payload.update(target=target, version=version, status=status)
             runs.append(payload)
         return {
             "schema": API_SCHEMA,
@@ -372,43 +382,70 @@ def build_app(
         ref = registry.resolve(ident)
         if ref is None:
             raise HTTPException(status_code=404, detail="unknown run id")
-        snapshot = read_snapshot(ref)
-        return {
-            "schema": API_SCHEMA,
-            "id": ident,
-            "progress_age_seconds": snapshot.progress_age(),
-            "stalled": _stalled(snapshot),
-            "snapshot": to_jsonable(snapshot),
-        }
+        try:
+            snapshot = read_snapshot(ref)
+            body = {
+                "schema": API_SCHEMA,
+                "id": ident,
+                "read_state": runs_app.ReadState.OK.value,
+                "error": None,
+                "progress_age_seconds": snapshot.progress_age(),
+                "stalled": _stalled(snapshot),
+                # the same compact status as the runs table, so the detail shows the same state
+                "status": _run_status(snapshot),
+                "snapshot": to_jsonable(snapshot),
+            }
+        except Exception as exc:  # noqa: BLE001 -- the run stays visible, marked unreadable
+            body = {
+                "schema": API_SCHEMA,
+                "id": ident,
+                "read_state": runs_app.ReadState.UNREADABLE.value,
+                "error": _run_error(exc),
+                "progress_age_seconds": None,
+                "stalled": None,
+                "status": None,
+                "snapshot": None,
+            }
+        return body
 
     @app.get("/api/findings")
     def api_findings(limit: int = FINDINGS_DEFAULT_LIMIT) -> dict[str, Any]:
         chosen, total, limit = bounded_runs(limit)
         findings: list[dict[str, Any]] = []
         fixture_violations: list[dict[str, Any]] = []
+        unreadable: list[dict[str, Any]] = []
         for listing in chosen:
             ref = listing.ref
             assert ref is not None  # bounded_runs keeps only listings with a ref
-            snapshot = read_snapshot(ref)
-            summary = snapshot.summary
-            meta = {
-                "run_id": run_id(ref),
-                "run_kind": ref.kind.value,
-                "target": snapshot.ref.target,
-                "version": snapshot.ref.version,
-                "validated": summary.validated if summary else None,
-                "read_state": summary.read_state.value if summary else None,
-            }
-            findings.extend({**meta, "case": to_jsonable(row)} for row in snapshot.findings)
-            # fixture-regression violations are a controlled check, not exploration candidates:
-            # kept in a separate list so the dashboard never counts or lists them as candidates.
-            fixture_violations.extend(
-                {**meta, "case": to_jsonable(row)} for row in snapshot.fixture_violations
-            )
+            try:  # build this run's rows apart: a failure half-way adds none of them
+                snapshot = read_snapshot(ref)
+                summary = snapshot.summary
+                meta = {
+                    "run_id": run_id(ref),
+                    "run_kind": ref.kind.value,
+                    "target": snapshot.ref.target,
+                    "version": snapshot.ref.version,
+                    "validated": summary.validated if summary else None,
+                    "read_state": summary.read_state.value if summary else None,
+                }
+                own = [{**meta, "case": to_jsonable(row)} for row in snapshot.findings]
+                # fixture-regression violations are a controlled check, not exploration
+                # candidates: a separate list, never counted or listed as candidates.
+                fixtures = [
+                    {**meta, "case": to_jsonable(row)} for row in snapshot.fixture_violations
+                ]
+            except Exception as exc:  # noqa: BLE001
+                unreadable.append({"run_id": run_id(ref), "run_kind": ref.kind.value,
+                                   "read_state": runs_app.ReadState.UNREADABLE.value,
+                                   "error": _run_error(exc)})  # fmt: skip
+                continue
+            findings.extend(own)
+            fixture_violations.extend(fixtures)
         return {
             "schema": API_SCHEMA,
             "findings": findings,
             "fixture_violations": fixture_violations,
+            "unreadable": unreadable,
             "runs_total": total,
             "runs_scanned": len(chosen),
             "truncated": total > len(chosen),
@@ -419,29 +456,36 @@ def build_app(
     def api_replays(limit: int = FINDINGS_DEFAULT_LIMIT) -> dict[str, Any]:
         chosen, total, limit = bounded_runs(limit)
         replays: list[dict[str, Any]] = []
+        unreadable: list[dict[str, Any]] = []
         seen: set[str] = set()
         for listing in chosen:
             ref = listing.ref
             assert ref is not None
-            snapshot = read_snapshot(ref)
             ident = run_id(ref)
-            for record in snapshot.replays:
-                key = str(record.path)
-                if key in seen:
-                    continue
-                seen.add(key)
-                replays.append(
-                    {
+            try:  # this run's records apart: a failure half-way adds none of them
+                snapshot = read_snapshot(ref)
+                own: list[tuple[str, dict[str, Any]]] = []
+                for record in snapshot.replays:
+                    own.append((str(record.path), {
                         "run_id": ident,
                         "run_kind": ref.kind.value,
                         "target": snapshot.ref.target,
                         "version": snapshot.ref.version,
                         "replay": to_jsonable(record),
-                    }
-                )
+                    }))  # fmt: skip
+            except Exception as exc:  # noqa: BLE001
+                unreadable.append({"run_id": ident, "run_kind": ref.kind.value,
+                                   "read_state": runs_app.ReadState.UNREADABLE.value,
+                                   "error": _run_error(exc)})  # fmt: skip
+                continue
+            for key, item in own:
+                if key not in seen:
+                    seen.add(key)
+                    replays.append(item)
         return {
             "schema": API_SCHEMA,
             "replays": replays,
+            "unreadable": unreadable,
             "runs_total": total,
             "runs_scanned": len(chosen),
             "truncated": total > len(chosen),
@@ -453,13 +497,22 @@ def build_app(
         ref = registry.resolve(ident)
         if ref is None:
             raise HTTPException(status_code=404, detail="unknown run id")
-        snapshot = read_snapshot(ref)
+        note = "metadata only; inputs are not re-checked and file contents are never served"
+        try:
+            snapshot = read_snapshot(ref)
+            artifacts = [to_jsonable(entry) for entry in runs_app.list_artifacts(snapshot)]
+        except Exception as exc:  # noqa: BLE001 -- the run stays visible, marked unreadable
+            return {"schema": API_SCHEMA, "id": ident, "kind": ref.kind.value,
+                    "read_state": runs_app.ReadState.UNREADABLE.value, "error": _run_error(exc),
+                    "artifacts": [], "note": note}  # fmt: skip
         return {
             "schema": API_SCHEMA,
             "id": ident,
             "kind": ref.kind.value,
-            "artifacts": [to_jsonable(entry) for entry in runs_app.list_artifacts(snapshot)],
-            "note": "metadata only; inputs are not re-checked and file contents are never served",
+            "read_state": runs_app.ReadState.OK.value,
+            "error": None,
+            "artifacts": artifacts,
+            "note": note,
         }
 
     @app.get("/api/events")

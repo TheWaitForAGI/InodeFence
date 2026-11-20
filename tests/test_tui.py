@@ -167,20 +167,52 @@ async def test_a_quiet_running_snapshot_is_stalled_not_active(tmp_path: Path) ->
 
 @_sync
 async def test_other_targets_show_no_live_data_and_question_marks(tmp_path: Path) -> None:
-    out = syn.explore_out(tmp_path)
-    rid = f"{syn.SYNTHETIC}-3.12.7-data-1-20"
-    ref = RunRef(RunKind.EXPLORE, out, rid)
+    # python-tarfile, decompress and oras-go write nothing under target-explore/ until they end:
+    # mid-run the launcher log is the only file, and the run is listed from it (QA D3).
+    out = tmp_path / "pt-explore"
     log = out / "runtime" / "explore-launcher-20260101T000000Z-1.log"
     log.parent.mkdir(parents=True)
     log.write_text("==> [run controller]\n", encoding="utf-8")
-    app = _app([out], syn.Clock(), refs=[ref])
+    app = _app([out], syn.Clock())
     async with app.run_test(size=(160, 48)) as pilot:
         await _settle(app, pilot)
         (row,) = _rows(app, "campaigns")
-        assert row[1] == "· no live data" and row[2] == "?/?" and row[3] == "?" and row[4] == "?"
+        assert row[0].startswith("pt-explore") and "id at end" in row[0]
+        assert row[1].endswith(model.RUNNING_NO_LIVE)
+        assert row[2] == "?/?" and row[3] == "?" and row[4] == "?"
         assert row[7].startswith("launcher-log est.")
         outcomes = _text(app, "#p-outcomes")
         assert "success" in outcomes and "?" in outcomes and "█" not in outcomes  # no bars
+        assert "no live data for this run" in _text(app, "#p-campaign")
+
+
+@_sync
+async def test_a_finished_live_run_does_not_wait_for_more_snapshots(tmp_path: Path) -> None:
+    out, rid = syn.explore_out(tmp_path), syn.run_id()
+    syn.live_run(out, rid, [syn.step(1)], close="finished")
+    app = _app([out], syn.Clock(), refs=[RunRef(RunKind.EXPLORE, out, rid)])
+    async with app.run_test(size=(160, 48)) as pilot:
+        await _settle(app, pilot)
+        campaign = _text(app, "#p-campaign")
+        assert "finished · no progress snapshots observed by this screen" in campaign
+        assert "waiting for a second progress snapshot" not in campaign  # QA F6
+
+
+@_sync
+async def test_verify_fixtures_are_not_counted_as_candidates(tmp_path: Path) -> None:
+    cell = tmp_path / "verify" / "node-tar-7.5.2"
+    cases = [syn.case("toplevel_hardlink", True, termination=None),
+             syn.case("dir_symlink_write", False, termination=None)]  # fmt: skip
+    syn.write_result(cell, syn.result(mode=syn.ResultMode.FIXTURE_REGRESSION, cases=cases))
+    app = _app([tmp_path / "verify"], syn.Clock())
+    async with app.run_test(size=(160, 48)) as pilot:
+        await _settle(app, pilot)
+        (verify,) = _rows(app, "verify")
+        assert verify[5] == "1"  # fixtures V
+        assert model.findings(app.state) == []  # no candidate from a verify cell
+        rows = {r.key: r.cells[1].text for r in model.overview_rows(app.state)}
+        assert rows["violation candidates"] == "0"
+        assert rows["known fixtures violated (verify)"] == "1"
 
 
 @_sync

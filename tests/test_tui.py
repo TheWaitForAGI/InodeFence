@@ -186,6 +186,19 @@ async def test_other_targets_show_no_live_data_and_question_marks(tmp_path: Path
         assert "no live data for this run" in _text(app, "#p-campaign")
 
 
+def test_an_unknown_candidate_count_leaves_needs_repro_unknown(tmp_path: Path) -> None:
+    out = tmp_path / "pt-explore"
+    log = out / "runtime" / "explore-launcher-20260101T000000Z-1.log"
+    log.parent.mkdir(parents=True)
+    log.write_text("==> [run controller]\n", encoding="utf-8")
+    from inodefence.app.runs import discover_runs, read_run
+
+    (ref,) = [x.ref for x in discover_runs([out]) if x.ref]
+    snapshot = read_run(ref, now=log.stat().st_mtime + 5)
+    lines = dict(model.oracle_lines(model.DashboardState(roots=(out,)), snapshot))
+    assert lines["candidates"].text == "?" and lines["needs repro check"].text == "?"
+
+
 @_sync
 async def test_a_launcher_only_run_gone_quiet_is_no_activity(tmp_path: Path) -> None:
     out = tmp_path / "pt-explore"

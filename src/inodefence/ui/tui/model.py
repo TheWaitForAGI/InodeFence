@@ -820,7 +820,12 @@ def oracle_lines(state: DashboardState, snapshot: RunSnapshot | None) -> list[tu
         ("by contract", Cell("  ".join(marks) + ("  (from case folders)" if lower else "")))
     )
     needs = sum(r.finding is FindingClass.CANDIDATE_NEEDS_REPRO_CHECK for r in rows)
-    lines.append(("needs repro check", Cell(str(needs), WARN if needs else PLAIN)))
+    total = p.violations if p else len(rows)
+    if total is None and not rows:  # the candidates are not known, so neither is this (QA)
+        lines.append(("needs repro check", Cell(UNKNOWN, DIM)))
+    else:
+        shown = f"≥{needs}" if lower else str(needs)  # only the case folders read so far
+        lines.append(("needs repro check", Cell(shown, WARN if needs else PLAIN)))
     return lines
 
 

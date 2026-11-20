@@ -38,7 +38,7 @@ def test_a_run_without_live_data_is_not_stalled(tmp_path: Path) -> None:
 
 def test_no_label_says_confirmed() -> None:
     words = [model.finding_class_cell(f).text for f in (None, *model.FindingClass)]
-    words += [model.READ_ONLY_NOTE]
+    words += [model.SCREEN_NOTE]
     assert not any("confirm" in w or "vulnerab" in w for w in words)
 
 

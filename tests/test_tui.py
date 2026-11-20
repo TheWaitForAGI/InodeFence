@@ -357,7 +357,7 @@ async def test_keys_switch_screens_and_help(tmp_path: Path) -> None:
             assert app.query_one("#tabs", TabbedContent).active == tab
         await pilot.press("question_mark")
         await pilot.pause()
-        assert "read-only" in _text(app.screen, "#detail-body")
+        assert "only after Start" in _text(app.screen, "#detail-body")  # the run rule, said true
         await pilot.press("escape")
         await pilot.pause()
         assert app.screen is app.screen_stack[0]

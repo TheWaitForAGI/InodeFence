@@ -304,7 +304,7 @@ def test_required_and_common_fields_come_before_more_options() -> None:
     from inodefence.ui.tui.screens_run import ordered_fields
 
     main, more = ordered_fields(command_forms()["explore"])
-    assert [f.dest for f in main][:5] == ["version", "target", "budget", "seed", "auto_prepare"]
+    assert [f.dest for f in main][:5] == ["target", "version", "budget", "seed", "auto_prepare"]
     assert {"profile", "dry_run", "verbose", "quiet"} <= {f.dest for f in more}
 
 

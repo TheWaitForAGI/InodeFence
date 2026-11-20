@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import shlex
 from collections.abc import Callable, Iterable, Mapping, Sequence
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -185,7 +186,9 @@ def ordered_fields(form: CommandForm) -> tuple[list[Field], list[Field]]:
     main group; every other field under "more options"."""
     rank = {dest: index for index, dest in enumerate(COMMON)}
     main = [f for f in form.fields if f.required or f.dest in rank or f.target is not None]
-    main.sort(key=lambda f: (0 if f.required and f.target is None else 1, rank.get(f.dest, 99)))
+    # target first (people read target, then version), then the other required ones, then common
+    main.sort(key=lambda f: (0 if f.dest == "target" else 1 if f.required and f.target is None
+                             else 2, rank.get(f.dest, 99)))  # fmt: skip
     more = [f for f in form.fields if f not in main]
     return main, more
 
@@ -414,9 +417,26 @@ class OutputScreen(ModalScreen[None]):
 # -- the commands this screen started ------------------------------------------------------------
 
 
+def _local(stamp: str | None) -> datetime | None:
+    """A recorded UTC time (``2026-11-20T02:17:43Z``) in this machine's local time."""
+    if not stamp:
+        return None
+    try:
+        return datetime.strptime(stamp, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC).astimezone()
+    except ValueError:
+        return None
+
+
 def _short_time(stamp: str | None) -> str:
-    """``2026-11-20T02:17:43Z`` -> ``11-20 02:17:43Z`` (UTC, as recorded)."""
-    return stamp[5:].replace("T", " ") if stamp else "?"
+    """Local ``11-20 16:30:58``, like the header's clock (``?`` when unreadable)."""
+    local = _local(stamp)
+    return local.strftime("%m-%d %H:%M:%S") if local else "?"
+
+
+def _both_times(stamp: str | None) -> str:
+    """Local time with the recorded UTC beside it: ``2026-11-20 16:30:58 (07:30:58Z)``."""
+    local = _local(stamp)
+    return f"{local:%Y-%m-%d %H:%M:%S} ({stamp[11:]})" if local and stamp else (stamp or "—")
 
 
 def _state_style(text: str) -> str:
@@ -451,7 +471,7 @@ class LaunchesScreen(ModalScreen[str | None]):
 
     def on_mount(self) -> None:
         table = self.query_one("#launches-table", DataTable)
-        table.add_columns("started (UTC)", "command", "state")
+        table.add_columns("started", "command", "state")
         self.reload()
         self.set_interval(1.0, self.reload)
 
@@ -484,7 +504,7 @@ class LaunchesScreen(ModalScreen[str | None]):
         lines = [
             shlex.join(record.argv),  # the raw command, on one line, to copy
             f"in {record.cwd}",
-            f"started {record.started_at or '?'} · ended {record.ended_at or '—'}",
+            f"started {_both_times(record.started_at)} · ended {_both_times(record.ended_at)}",
             f"state {launch_records.state_text(record)}",
             f"record {record.folder}",
             "",

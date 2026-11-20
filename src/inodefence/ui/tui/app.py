@@ -1,11 +1,13 @@
-"""The Textual dashboard: a tiled, read-only monitor over :mod:`inodefence.app` (see ``model.py``).
+"""The Textual dashboard: a tiled monitor over :mod:`inodefence.app` (see ``model.py``) that can run
+the CLI's commands.
 
 Overview is a tiled screen: the selected campaign (an observed-throughput graph and its numbers),
 outcomes and oracle panels, targets, the run list with recent candidates, and the event stream --
 all drawn from real values (a graph with no observed samples is not drawn). Targets, Campaigns,
 Findings and Artifacts use the same panel grammar (titled borders, bars, badges). Nothing here
-parses a run file or decides a verdict, and keys only move around: nothing is started, stopped,
-deleted or written.
+parses a run file or decides a verdict. ``n`` (and the shortcuts) run an ``inodefence`` command
+through :mod:`inodefence.ui.tui.launch` -- one that starts Docker only after a confirmation;
+nothing is stopped, deleted or written by the screen itself.
 """
 
 from __future__ import annotations
@@ -182,7 +184,7 @@ def _panel(widget_id: str, title: str) -> Static:
 
 class InodeFenceTui(App[None]):
     TITLE = "InodeFence"
-    #: read-only screen: no command palette (its built-in commands are not needed here)
+    #: no command palette: its built-in commands are not needed here (``n`` runs the CLI's)
     ENABLE_COMMAND_PALETTE = False
     CSS = f"""
     Screen {{ background: {DEEP}; color: {PALETTE["text"]}; }}
@@ -811,7 +813,7 @@ def header_text(state: DashboardState, selected: RunSnapshot | None, now: float)
 
 
 def status_line(state: DashboardState, width: int) -> Text:
-    out = Text("read-only · reads existing run folders", style=PALETTE["muted"])
+    out = Text("reads existing run folders · n: run a command", style=PALETTE["muted"])
     if state.roots:
         roots = " · ".join(str(root) for root in state.roots)
         room = max(width - len(out) - 14, 10)
@@ -1070,7 +1072,7 @@ def events_view(events: Sequence[UiEvent], height: int, width: int = 0) -> Text:
     event is one line, cut with ``…`` to ``width`` (0: no limit)."""
     collapsed = model.collapse_events(events)[-height:]
     if not collapsed:
-        return Text(model.READ_ONLY_NOTE, style=PALETTE["muted"])
+        return Text(model.SCREEN_NOTE, style=PALETTE["muted"])
     widths = model.EVENT_WIDTHS
     lines = []
     for event, repeats in collapsed:

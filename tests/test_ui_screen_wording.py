@@ -82,3 +82,33 @@ def test_the_check_catches_what_it_should(tmp_path: Path) -> None:
     assert sorted(flagged) == ["confirmed vulnerability", "not yet confirmed, then confirmed"]
     assert len(SCREENS) > 20  # the scan reaches the TUI, console, web and app modules
     assert {p.parent.name for p in SCREENS} >= {"tui", "web", "app", "ui", "inodefence"}
+
+
+#: The TUI runs commands now (2026-11-20): no screen string may still call it read-only or say it
+#: starts nothing. (The read model is read-only, and the web's "read-only · local" chip is true.)
+NOT_READ_ONLY = (re.compile(r"read[- ]only", re.IGNORECASE),
+                 re.compile(r"\bstarts\b[^·()]*\bnothing\b", re.IGNORECASE))  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    "path", sorted((SRC / "ui" / "tui").glob("*.py")), ids=lambda p: p.name
+)  # fmt: skip
+def test_no_tui_string_says_it_starts_nothing(path: Path) -> None:
+    bad = [
+        f"tui/{path.name}:{line}: {text!r}"
+        for line, text in screen_strings(path)
+        if any(pattern.search(text) for pattern in NOT_READ_ONLY)
+    ]
+    assert bad == []
+
+
+def test_the_tui_check_catches_the_old_note(tmp_path: Path) -> None:
+    probe = tmp_path / "probe.py"
+    probe.write_text(
+        'OLD = "read-only · reads existing run folders · starts, stops and deletes nothing"\n'
+        'NEW = "reads existing run folders · runs a command only when you choose one '
+        '(one that starts Docker only after Start) · stops and deletes nothing"\n',
+        encoding="utf-8",
+    )
+    flagged = [t for _, t in screen_strings(probe) if any(p.search(t) for p in NOT_READ_ONLY)]
+    assert flagged == ["read-only · reads existing run folders · starts, stops and deletes nothing"]

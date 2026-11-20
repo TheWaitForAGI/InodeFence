@@ -177,6 +177,22 @@ def _count_findings(snapshot: runs_app.RunSnapshot, finding: runs_app.FindingCla
     return sum(1 for row in snapshot.findings if row.finding is finding)
 
 
+def _stalled(snapshot: runs_app.RunSnapshot) -> bool | None:
+    """A live run gone quiet: live + running + age > 4 x the live-pull interval (the TUI's
+    ACTIVE_MAX_AGE; the threshold is read from the app layer, never re-stated here). ``None`` when
+    the question does not apply (not a live run) or the age is unknown. RES1 will lift this to a
+    shared app.runs function; swap to it when it lands."""
+    progress = snapshot.progress
+    if (
+        progress is None
+        or progress.source is not runs_app.Source.LIVE
+        or progress.state != "running"
+    ):
+        return None
+    age = snapshot.progress_age()
+    return None if age is None else age > 4 * runs_app.LIVE_PULL_INTERVAL_SECONDS
+
+
 def _run_status(snapshot: runs_app.RunSnapshot) -> dict[str, Any]:
     """A compact per-run status for the runs table and the Overview aggregates (no recompute).
 
@@ -185,22 +201,9 @@ def _run_status(snapshot: runs_app.RunSnapshot) -> dict[str, Any]:
     """
     progress = snapshot.progress
     summary = snapshot.summary
-    # "stalled" is a live run that has gone quiet: the threshold is 4 x the live-pull interval,
-    # read from the app layer (never re-stated in the web) -- the same value the TUI uses for
-    # ACTIVE_MAX_AGE. None when the question does not apply (not a live run, or the snapshot carries
-    # no age). RES1 will lift this to a shared app.runs function; swap to it when it lands.
-    stalled: bool | None = None
-    if (
-        progress is not None
-        and progress.source is runs_app.Source.LIVE
-        and progress.state == "running"
-    ):
-        age = snapshot.progress_age()
-        if age is not None:
-            stalled = age > 4 * runs_app.LIVE_PULL_INTERVAL_SECONDS
     return {
         "state": progress.state if progress else None,
-        "stalled": stalled,
+        "stalled": _stalled(snapshot),
         "source": progress.source.value if progress else None,
         "runs": progress.runs if progress else None,
         "budget": progress.budget if progress else None,
@@ -345,6 +348,7 @@ def build_app(
             "schema": API_SCHEMA,
             "id": ident,
             "progress_age_seconds": snapshot.progress_age(),
+            "stalled": _stalled(snapshot),
             "snapshot": to_jsonable(snapshot),
         }
 

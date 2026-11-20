@@ -71,6 +71,7 @@ vm.runInContext(fs.readFileSync(appPath, "utf8") + `
   const text = (cards) => cards.map((c) => c.textContent).join(" | ");
   out.launcherDetail = text(api.runDetailCards(data.launcherDetail));
   out.verifyDetail = text(api.runDetailCards(data.verifyDetail));
+  out.unclassifiedDetail = text(api.runDetailCards(data.unclassifiedDetail));
   const view = new Node_("div");
   await api.renderFindings(view);
   out.findings = view.textContent;
@@ -93,11 +94,17 @@ def _payloads(tmp_path: Path) -> dict:
     runs = client.get("/api/runs").json()["runs"]
     launcher = next(r for r in runs if r["run_id"] is None)
     verify = next(r for r in runs if r["kind"] == "verify")
+    verify_detail = client.get(f"/api/runs/{verify['id']}").json()
+    # what a result with neither a readable mode nor a run kind gives (the app layer's None)
+    unclassified = json.loads(json.dumps(verify_detail))
+    snap = unclassified["snapshot"]
+    snap["unclassified_violations"], snap["fixture_violations"] = snap["fixture_violations"], []
     return {
         "runs": runs,
         "launcherStatus": launcher["status"],
         "launcherDetail": client.get(f"/api/runs/{launcher['id']}").json(),
-        "verifyDetail": client.get(f"/api/runs/{verify['id']}").json(),
+        "verifyDetail": verify_detail,
+        "unclassifiedDetail": unclassified,
         "api": {
             "/api/findings": client.get("/api/findings?limit=500").json(),
             "/api/replays": client.get("/api/replays?limit=500").json(),
@@ -132,3 +139,10 @@ def test_the_pages_say_what_the_files_say(tmp_path: Path) -> None:
     # (3) no candidates and no filter: "no candidates yet", never "no findings match"
     assert "no candidates yet" in out["findings"] and "no findings match" not in out["findings"]
     assert "known fixtures violated (verify)" in out["findings"]
+    # the screen name, with the qualifier every oracle flag carries
+    assert "Flagged cases" in out["findings"]
+    assert "oracle flags · not confirmed" in out["findings"]
+    # a case of unknown kind is neither a candidate nor a fixture, and the page still renders
+    detail = out["unclassifiedDetail"].replace("  ", " ")
+    assert "unclassified (result not validated) 1" in detail
+    assert "fixtures violated (verify) 0" in detail

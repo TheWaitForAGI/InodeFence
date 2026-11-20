@@ -252,6 +252,9 @@ def _run_status(snapshot: runs_app.RunSnapshot) -> dict[str, Any]:
         # a verify cell's known-fixture violations: counted apart from exploration candidates (they
         # are a controlled check, never in snapshot.findings), shown on their own on the dashboard.
         "fixture_violations": len(snapshot.fixture_violations),
+        # flagged cases of an unvalidated result whose mode and run kind are both unknown:
+        # neither candidates nor fixtures ("unclassified (result not validated)")
+        "unclassified_violations": len(snapshot.unclassified_violations),
         "launcher": _launcher_status(snapshot),
         "replays": len(snapshot.replays),
         "progress_age_seconds": snapshot.progress_age(),

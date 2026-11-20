@@ -370,6 +370,7 @@ def overview_rows(state: DashboardState) -> list[Row]:
     all_findings = findings(state)
     needs = sum(r.finding is FindingClass.CANDIDATE_NEEDS_REPRO_CHECK for _, r in all_findings)
     fixtures = sum(len(s.fixture_violations) for s in verify)
+    unclassified = sum(len(s.unclassified_violations) for s in state.snapshots.values())
     unread = sum(item.read_state is not ReadState.OK for item in state.listings)
     engine = engine_cell(state)
     engine_text = engine.text if state.engine is None else f"{engine.text} · {state.engine[1]}"
@@ -398,6 +399,11 @@ def overview_rows(state: DashboardState) -> list[Row]:
         ("  by replay", Cell(replay_breakdown(state)), "replay.json"),
         ("replays", Cell(str(len(_replays(state)))), "replay.json"),
         ("known fixtures violated (verify)", Cell(str(fixtures)), "result"),
+        *(
+            [("unclassified (result not validated)", Cell(str(unclassified), WARN), "result")]
+            if unclassified  # neither candidates nor fixtures: mode and run kind both unknown
+            else []
+        ),
         ("folders not read", Cell(str(unread), WARN if unread else PLAIN), "scan"),
     ]  # fmt: skip
     return [Row(label, (Cell(label), value, Cell(src, DIM))) for label, value, src in rows]
@@ -625,7 +631,7 @@ def finding_detail(state: DashboardState, key: str) -> list[tuple[str, Cell]]:
 
 def artifact_lines(snapshot: RunSnapshot | None) -> list[tuple[str, Cell]]:
     if snapshot is None:
-        return [("run", Cell("select a run in Campaigns or Findings", DIM))]
+        return [("run", Cell("select a run in Campaigns or Flagged cases", DIM))]
     ref = snapshot.ref
     lines: list[tuple[str, Cell]] = [
         ("run", Cell(f"{ref.kind.value} {text(ref.run_id)}", ACCENT)),

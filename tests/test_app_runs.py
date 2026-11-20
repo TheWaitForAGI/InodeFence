@@ -684,3 +684,53 @@ def test_a_folder_that_breaks_discovery_is_listed_not_fatal(tmp_path: Path) -> N
     assert [x.ref.run_id for x in listings if x.ref] == ["node-tar-7.5.2"]
     (broken,) = [x for x in listings if x.ref is None]
     assert broken.path == odd and broken.read_state is ReadState.UNREADABLE and broken.error
+
+
+_BROKEN_MODES = ["broken", "", 7, None, ["fixture-regression"], {"mode": "fixture-regression"}]
+
+
+def _broken_mode_cell(tmp_path: Path, mode: object) -> Path:
+    path = _fixture_cell(tmp_path, termination=None)
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["mode"] = mode
+    path.write_text(json.dumps(data), encoding="utf-8")
+    return path
+
+
+@pytest.mark.parametrize("mode", _BROKEN_MODES)
+def test_a_verify_cell_with_a_broken_mode_still_holds_fixtures(
+    tmp_path: Path, mode: object
+) -> None:
+    # ORCH/QA: a broken mode made the cell's fixture violation a "needs repro check" candidate
+    path = _broken_mode_cell(tmp_path, mode)
+    ref = runs.RunRef(runs.RunKind.VERIFY, path.parent, path.parent.name)
+    snapshot = runs.read_run(ref)
+    assert snapshot.summary is not None
+    assert snapshot.summary.read_state is ReadState.UNVALIDATED
+    assert snapshot.findings == () and snapshot.summary.candidates == ()
+    assert [r.case_id for r in snapshot.fixture_violations] == ["toplevel_hardlink"]
+    assert snapshot.unclassified_violations == ()
+
+
+@pytest.mark.parametrize("mode", _BROKEN_MODES)
+def test_with_neither_mode_nor_kind_a_violation_is_unclassified(
+    tmp_path: Path, mode: object
+) -> None:
+    summary = runs.read_result(_broken_mode_cell(tmp_path, mode))  # no ref: kind unknown
+    assert summary.read_state is ReadState.UNVALIDATED
+    assert summary.candidates == () and summary.fixture_violations == ()
+    (row,) = summary.unclassified_violations
+    assert row.known_fixture is None and row.finding is None and row.case_id == "toplevel_hardlink"
+
+
+def test_a_broken_mode_in_an_exploration_keeps_its_candidates(tmp_path: Path) -> None:
+    out = syn.explore_out(tmp_path)
+    rid = syn.run_id()
+    path = syn.write_result(out / "target-explore" / f"{rid}-result",
+                            syn.result(cases=[syn.case("step-1", True)]))  # fmt: skip
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["mode"] = 7
+    path.write_text(json.dumps(data), encoding="utf-8")
+    snapshot = runs.read_run(runs.RunRef(runs.RunKind.EXPLORE, out, rid))
+    assert [r.case_id for r in snapshot.findings] == ["step-1"]
+    assert snapshot.fixture_violations == () and snapshot.unclassified_violations == ()

@@ -143,16 +143,22 @@ def default_targets() -> Mapping[str, Mapping[str, Any]]:
     return targets.load(root)
 
 
+#: The qualifier every oracle flag carries wherever it is shown, so a screenshot of one panel never
+#: reads as a finding: the oracle flagged it, nothing confirmed it (W4).
+NOT_CONFIRMED = "oracle flags · not confirmed"
+
+
 class DetailScreen(ModalScreen[None]):
     BINDINGS = [Binding("escape,q,enter", "dismiss", "close")]
 
-    def __init__(self, title: str, body: Any) -> None:
+    def __init__(self, title: str, body: Any, subtitle: str = "") -> None:
         super().__init__()
-        self._title, self._body = title, body
+        self._title, self._body, self._subtitle = title, body, subtitle
 
     def compose(self) -> ComposeResult:
         with VerticalScroll(id="detail") as box:
             box.border_title = self._title
+            box.border_subtitle = self._subtitle
             yield Static(self._body, id="detail-body")
 
 
@@ -222,7 +228,7 @@ class InodeFenceTui(App[None]):
         Binding("1", "show('overview')", "Overview"),
         Binding("2", "show('targets')", "Targets"),
         Binding("3", "show('campaigns')", "Campaigns"),
-        Binding("4", "show('findings')", "Findings"),
+        Binding("4", "show('findings')", "Flagged cases"),
         Binding("5", "show('artifacts')", "Artifacts"),
         Binding("r", "refresh_now", "Refresh"),
         Binding("question_mark", "help", "Help"),
@@ -289,15 +295,16 @@ class InodeFenceTui(App[None]):
                         yield Static("verify cells", id="verify-title")
                         yield DataTable(id="verify-table", cursor_type="row")
                     yield _panel("p-run-detail", "selected run")
-            with TabPane("4 Findings", id="findings"):
+            with TabPane("4 Flagged cases", id="findings"):
                 with Horizontal(id="find-split"):
                     with Vertical(id="p-finding-list", classes="box") as box:
                         box.border_title = "violation candidates"
-                        box.border_subtitle = "oracle flags · not confirmed"
+                        box.border_subtitle = NOT_CONFIRMED
                         yield DataTable(id="findings-table", cursor_type="row")
                         yield Static(model.CONTRACT_LEGEND, id="findings-legend")
                     with VerticalScroll(id="p-finding-detail", classes="box") as box:
                         box.border_title = "candidate"
+                        box.border_subtitle = NOT_CONFIRMED
                         yield Static(id="finding-detail-body")
             with TabPane("5 Artifacts", id="artifacts"):
                 with VerticalScroll(id="artifacts-box", classes="box") as box:
@@ -451,7 +458,9 @@ class InodeFenceTui(App[None]):
         outcomes = self.query_one("#p-outcomes", Static)
         outcomes.update(outcomes_text(followed, outcomes.size.width - 4))
         oracle = self.query_one("#p-oracle", Static)
-        oracle.border_subtitle = "selected run · per contract ≥" if followed else ""
+        oracle.border_subtitle = (
+            "selected run · per contract ≥ · not confirmed" if followed else "not confirmed"
+        )
         oracle.update(oracle_view(state, followed, oracle.size.width - 4))
         self.query_one("#p-run-detail", Static).update(run_detail_view(selected, state.now))
         detail = self.query_one("#p-finding-detail")
@@ -526,7 +535,7 @@ class InodeFenceTui(App[None]):
     def action_help(self) -> None:
         body = Text()
         for key, what in (
-            ("1-5", "Overview · Targets · Campaigns · Findings · Artifacts"),
+            ("1-5", "Overview · Targets · Campaigns · Flagged cases · Artifacts"),
             ("↑ ↓ / j k", "move in a list; the panels follow the highlighted run"),
             ("enter", "candidate detail, or the artifacts of a run"),
             ("esc", "close a detail"),
@@ -566,7 +575,8 @@ class InodeFenceTui(App[None]):
         self.draw_selection()
         if name == "findings":
             body = detail_view(model.finding_detail(self.state, key), max(self.size.width - 12, 40))
-            self.push_screen(DetailScreen(f"candidate {key.split('#', 1)[-1]}", body))
+            title = f"candidate {key.split('#', 1)[-1]}"
+            self.push_screen(DetailScreen(title, body, subtitle=NOT_CONFIRMED))
         elif name in ("runs", "campaigns", "verify"):
             self.action_show("artifacts")
 
@@ -774,7 +784,7 @@ def recent_candidates(state: DashboardState) -> Group | Text:
         grid.add_row(
             Text(case.text, style=PALETTE["accent"]), verdicts, styled(cls), styled(replay)
         )
-    return Group(Text("recent candidates · all runs", style=PALETTE["muted"]), grid)
+    return Group(Text("recent candidates · all runs · not confirmed", style=PALETTE["muted"]), grid)
 
 
 def run_detail_view(snapshot: RunSnapshot | None, now: float) -> Text:

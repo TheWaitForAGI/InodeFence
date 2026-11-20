@@ -316,8 +316,10 @@ class CaseRow:
     recorded_at: str | None = None
     source: Source = Source.RESULT
     #: the row is a known hand-built fixture of a ``fixture-regression`` result (a verify cell, a
-    #: controlled reproduction), not a case an exploration produced; ``finding`` is then ``None``
-    known_fixture: bool = False
+    #: controlled reproduction), not a case an exploration produced; ``finding`` is then ``None``.
+    #: ``None``: not known -- a result the strict reader refused whose ``mode`` is broken, found
+    #: outside a verify or explore folder; a violation is then neither a candidate nor a fixture
+    known_fixture: bool | None = False
 
     @property
     def violated(self) -> bool:
@@ -326,7 +328,12 @@ class CaseRow:
     @property
     def fixture_violation(self) -> bool:
         """A known fixture the oracle flagged (controlled check; never a candidate)."""
-        return self.known_fixture and self.violated
+        return self.known_fixture is True and self.violated
+
+    @property
+    def unclassified_violation(self) -> bool:
+        """Flagged, but whether it is a known fixture or a candidate is not known (``None``)."""
+        return self.known_fixture is None and self.violated
 
     @property
     def contracts(self) -> dict[str, bool | None]:
@@ -396,6 +403,11 @@ class RunSummary:
         """Known fixtures the oracle flagged (``fixture-regression`` results only)."""
         return tuple(row for row in self.cases if row.fixture_violation)
 
+    @property
+    def unclassified_violations(self) -> tuple[CaseRow, ...]:
+        """Flagged cases of an unvalidated result whose ``mode`` and run kind are both unknown."""
+        return tuple(row for row in self.cases if row.unclassified_violation)
+
 
 @dataclass(frozen=True, slots=True)
 class CaseComparison:
@@ -462,6 +474,9 @@ class RunSnapshot:
     launcher_log: Path | None = None
     #: known fixtures the oracle flagged (a verify cell's controlled check; not candidates)
     fixture_violations: tuple[CaseRow, ...] = ()
+    #: flagged cases of an unvalidated result whose mode and run kind are both unknown: neither
+    #: candidates nor fixtures ("unclassified (result not validated)")
+    unclassified_violations: tuple[CaseRow, ...] = ()
     #: only for an exploration seen through its launcher log alone (``ref.run_id`` ``None``): its
     #: state estimated from the log's last write. ``None`` for every other run.
     launcher_state: LauncherState | None = None
@@ -537,12 +552,13 @@ def _row_from_verdict(
     inputs: Mapping[str, tuple[str, Path]],
     run: int | None,
     *,
-    known_fixture: bool = False,
+    known_fixture: bool | None = False,
 ) -> CaseRow:
     """A result case as a row; judgment and the repro-check flag come from :class:`CaseVerdict`.
 
     ``known_fixture``: the result is a ``fixture-regression`` one, so a violation is a known
-    fixture's controlled check, not a candidate (``finding`` stays ``None``).
+    fixture's controlled check, not a candidate (``finding`` stays ``None``). ``None``: not
+    known, so a violation is not raised to a candidate either (it stays unclassified).
     """
     if case.is_run_error:
         judgment = Judgment.RUN_ERROR
@@ -551,7 +567,7 @@ def _row_from_verdict(
     else:
         judgment = Judgment.JUDGED
     finding = None
-    if case.violated and not known_fixture:
+    if case.violated and known_fixture is False:
         finding = (
             FindingClass.CANDIDATE_NEEDS_REPRO_CHECK
             if case.needs_repro_check
@@ -707,6 +723,21 @@ def _warning(terminations: Mapping[str, int | None]) -> str | None:
     return no_extraction_warning(known) if known else None
 
 
+def _known_fixture(mode: object, ref: RunRef | None) -> bool | None:
+    """Whether a stored result's violations are known fixtures: by its own ``mode`` when that is
+    readable, else by the kind of folder it was found in (a verify cell or an exploration), else
+    ``None`` -- unknown, which never turns a violation into a candidate."""
+    if mode == ResultMode.FIXTURE_REGRESSION.value:
+        return True
+    if mode == ResultMode.CAMPAIGN.value:
+        return False
+    if ref is not None and ref.kind is RunKind.VERIFY:
+        return True
+    if ref is not None and ref.kind is RunKind.EXPLORE:
+        return False
+    return None
+
+
 def _summary_as_stored(
     data: Mapping[str, Any], path: Path, ref: RunRef | None, extras: dict, error: str
 ) -> RunSummary:
@@ -717,7 +748,7 @@ def _summary_as_stored(
     stored = campaign.get("terminations")
     terminations = {k: _int(v) for k, v in stored.items()} if isinstance(stored, Mapping) else {}
     verdict = data.get("verdict")
-    known_fixture = data.get("mode") == ResultMode.FIXTURE_REGRESSION.value
+    known_fixture = _known_fixture(data.get("mode"), ref)
     rows = []
     for case in _list(data.get("cases")):
         if not isinstance(case, Mapping) or not isinstance(case.get("case_id"), str):
@@ -1161,6 +1192,7 @@ def _read_run(ref: RunRef, read_at: float) -> RunSnapshot:
             ref, read_at, progress=progress, summary=replace(summary, ref=ref),
             findings=summary.candidates, read_errors=tuple(errors),
             fixture_violations=summary.fixture_violations,
+            unclassified_violations=summary.unclassified_violations,
         )  # fmt: skip
     # explore
     base = ref.root / EXPLORE_DIR
@@ -1222,6 +1254,7 @@ def _read_run(ref: RunRef, read_at: float) -> RunSnapshot:
         read_errors=tuple(errors),
         launcher_log=log,
         fixture_violations=summary.fixture_violations if summary is not None else (),
+        unclassified_violations=summary.unclassified_violations if summary is not None else (),
         launcher_state=_launcher_state(log, read_at) if not run_id and log is not None else None,
     )
 

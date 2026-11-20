@@ -30,7 +30,9 @@ Rules every field follows, so no interface has to decide them again:
 - **A run that has written only its launcher log is still a run.** python-tarfile, decompress
   and oras-go write nothing under ``target-explore/`` until they end; while they run,
   :func:`discover_runs` lists the output folder from its launcher log alone (``run_id`` ``None``,
-  source :attr:`Source.LAUNCHER_LOG`).
+  source :attr:`Source.LAUNCHER_LOG`). It is never simply "running": its state is an estimate
+  from the launcher log's last write (:class:`LauncherState`, :func:`launcher_activity`), so a
+  launch killed before writing its record turns into "no activity" instead of running forever.
 - **Broken input is a state, not an exception.** ``result.json`` is not written atomically, so a
   file that does not parse is :attr:`ReadState.NOT_READY`; a missing, unreadable or foreign file is
   reported as such. Keys a newer version adds are kept in ``extras``; a result the strict reader
@@ -108,6 +110,48 @@ class RunKind(StrEnum):
     EXPLORE = "explore"
     VERIFY = "verify"
     REPLAY = "replay"
+
+
+#: Seconds a live launcher can go without writing its log. The longest silent phase it allows is
+#: one image build: ``docker build --quiet`` prints only when it finishes and the launcher's own
+#: deadline for it is ``DEADLINE_BUILD=1800`` (``scripts/launcher_bounded.sh``, D049 condition 3);
+#: a build past that deadline is ended and logged. Every other phase is shorter (pip 300 s, copy
+#: 300 s) and the campaign writes a line per step (extractor timeout 10 s). Observed on HOST4
+#: (QA, 2026-11-20, python-tarfile 3.12.16, budget 20, warm images): the whole run took 54 s, the
+#: quietest stretch (preparing the controller) was under 28 s and steps came about every 1.3 s.
+#: 120 s of slack on top of the build deadline; ``tests/test_app_runs.py`` pins it to the script.
+LAUNCHER_QUIET_MAX_SECONDS = 1800 + 120
+
+
+class LaunchActivity(StrEnum):
+    """What the launcher log's last write says about a run seen only through it (an estimate)."""
+
+    #: written within :data:`LAUNCHER_QUIET_MAX_SECONDS`: launching or running
+    ACTIVE = "active"
+    #: quiet for longer than any phase a live launcher allows: it ended without its record
+    #: (killed, host restarted) or is stuck; not counted as running
+    NO_ACTIVITY = "no_activity"
+
+
+@dataclass(frozen=True, slots=True)
+class LauncherState:
+    """An id-less run's state, estimated from its launcher log (``estimated`` is always True)."""
+
+    activity: LaunchActivity
+    #: epoch seconds of the launcher log's last write (its mtime)
+    last_write: float
+    #: seconds from ``last_write`` to when the snapshot was read
+    age_seconds: float
+    log: Path
+    estimated: bool = True
+
+
+def launcher_activity(last_write: float, now: float) -> LaunchActivity:
+    """ACTIVE when the log was written within :data:`LAUNCHER_QUIET_MAX_SECONDS` of ``now``."""
+    quiet = now - last_write
+    return (
+        LaunchActivity.ACTIVE if quiet <= LAUNCHER_QUIET_MAX_SECONDS else LaunchActivity.NO_ACTIVITY
+    )
 
 
 class Source(StrEnum):
@@ -418,6 +462,9 @@ class RunSnapshot:
     launcher_log: Path | None = None
     #: known fixtures the oracle flagged (a verify cell's controlled check; not candidates)
     fixture_violations: tuple[CaseRow, ...] = ()
+    #: only for an exploration seen through its launcher log alone (``ref.run_id`` ``None``): its
+    #: state estimated from the log's last write. ``None`` for every other run.
+    launcher_state: LauncherState | None = None
 
     def progress_age(self, now: float | None = None) -> float | None:
         """Seconds since the progress snapshot's own ``updated_at`` (``None`` when unknown)."""
@@ -1137,6 +1184,19 @@ def read_run(ref: RunRef, *, now: float | None = None) -> RunSnapshot:
         read_errors=tuple(errors),
         launcher_log=log,
         fixture_violations=summary.fixture_violations if summary is not None else (),
+        launcher_state=_launcher_state(log, read_at) if not run_id and log is not None else None,
+    )
+
+
+def _launcher_state(log: Path, now: float) -> LauncherState | None:
+    last_write = _lstat_mtime(log)
+    if last_write is None:
+        return None
+    return LauncherState(
+        activity=launcher_activity(last_write, now),
+        last_write=last_write,
+        age_seconds=max(now - last_write, 0.0),
+        log=log,
     )
 
 

@@ -1,0 +1,1479 @@
+"""Read model of runs for every interface (console, TUI, web): what the existing files say, typed.
+
+This module renders nothing and writes nothing. It reads the artifacts a run already leaves --
+``live/progress.json`` and the violation case folders (node-tar exploration), ``result.json``
+(every explore result and verify cell), ``replay.json`` and the launcher log -- through the
+existing readers (:mod:`inodefence.live_exploration`, :mod:`inodefence.drivers.progress`,
+:mod:`inodefence.target_result`, :mod:`inodefence.case_replay`) and returns them as small frozen
+records. There is no index or database: runs are found by scanning folders.
+
+Rules every field follows, so no interface has to decide them again:
+
+- **Unknown is not zero.** A count the files do not hold is ``None`` (shown as ``?`` / ``-``). Only
+  node-tar writes live numbers while it runs; for python-tarfile, decompress and oras-go every
+  mid-run number is ``None`` and :class:`RunProgress` says where the little it has came from
+  (``source``).
+- **Contracts stay three-valued.** ``c0``/``c1``/``c2`` are ``True`` (violated), ``False`` (judged,
+  not violated) or ``None`` (not judged or not observed -- verify never observes C0). ``None`` is
+  never folded into "no violation".
+- **Separate axes stay separate** (one enum each): how the extractor ended (:class:`Termination`),
+  whether the oracle was evaluated (:class:`Judgment`), the campaign verdict (:class:`Verdict`), a
+  violation the oracle flagged in an exploration (:class:`FindingClass` -- always a *candidate*),
+  and what a replay of it concluded (:class:`ReplayConclusion`). Nothing here says "confirmed
+  vulnerability"; the strongest statement the data supports is "reproduced under the same
+  conditions in n of the judged rounds" (:class:`ReplayRecord`).
+- **A known fixture is not a candidate.** A violation in a ``fixture-regression`` result (a verify
+  cell: hand-built fixtures run once, a controlled reproduction) is
+  :attr:`CaseRow.fixture_violation`, never a :class:`FindingClass`; it is counted apart
+  (:attr:`RunSummary.fixture_violations`, :attr:`RunSnapshot.fixture_violations`) and is not a
+  replay target. Which one a row is follows the result's own ``mode``, not the folder.
+- **A run that has written only its launcher log is still a run.** python-tarfile, decompress
+  and oras-go write nothing under ``target-explore/`` until they end; while they run,
+  :func:`discover_runs` lists the output folder from its launcher log alone (``run_id`` ``None``,
+  source :attr:`Source.LAUNCHER_LOG`). It is never simply "running": its state is an estimate
+  from the launcher log's last write (:class:`LauncherState`, :func:`launcher_activity`), so a
+  launch killed before writing its record turns into "no activity" instead of running forever.
+- **Broken input is a state, not an exception.** ``result.json`` is not written atomically, so a
+  file that does not parse is :attr:`ReadState.NOT_READY`; a missing, unreadable or foreign file is
+  reported as such. Keys a newer version adds are kept in ``extras``; a result the strict reader
+  still refuses comes back as :attr:`ReadState.UNVALIDATED` with its stored values and the reason,
+  never as ``OK``.
+- **Coupling, on purpose:** the campaign key sets are the strict reader's own private
+  ``_CAMPAIGN_KEYS`` / ``_CAMPAIGN_OPTIONAL`` (``target_result.py`` is not changed for the UI);
+  ``tests/test_app_runs.py`` fails if they disappear, so the two never drift apart silently.
+- **Hashes are shown as recorded.** Re-hashing the saved inputs happens only on request
+  (:func:`recheck_inputs`); until then :attr:`Integrity.rechecked` is ``False``.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+import stat
+from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass, field, fields, replace
+from datetime import UTC, datetime
+from enum import StrEnum
+from hashlib import sha256
+from pathlib import Path
+from typing import Any
+
+from inodefence import case_replay
+from inodefence.drivers import progress as progress_reader
+from inodefence.drivers.repo import is_repo
+from inodefence.live_exploration import (
+    PROGRESS_FILE,
+    find_live_dirs,
+    list_violation_cases,
+    read_progress,
+)
+from inodefence.target_result import (
+    _CAMPAIGN_KEYS,
+    _CAMPAIGN_OPTIONAL,
+    TERMINATIONS,
+    CampaignInfo,
+    CaseVerdict,
+    ResultMode,
+    TargetResult,
+    TargetResultError,
+    from_json_dict,
+    no_extraction_warning,
+)
+from inodefence.target_result import (
+    SCHEMA as RESULT_SCHEMA,
+)
+from inodefence.user_config import (
+    EXPLORE_OUT_NAME,
+    VERIFY_OUT_NAME,
+    UserConfig,
+    UserConfigError,
+    load_user_config,
+)
+
+RESULT_FILE = "result.json"
+#: Folder under an explore ``--out`` that holds loop reports, ``<run_id>-result/`` and live folders.
+EXPLORE_DIR = "target-explore"
+RESULT_SUFFIX = "-result"
+#: Folder under an output folder with the runtime records and the launcher logs.
+RUNTIME_DIR = progress_reader.LOG_DIR
+LAUNCHER_LOG_GLOB = "explore-launcher-*.log"
+#: ``explore-launcher-<UTC start>-<pid>.log`` (``drivers.progress``; none in STREAM mode).
+_LAUNCHER_LOG_START = re.compile(r"^explore-launcher-(\d{8}T\d{6}Z)-\d+\.log$")
+#: How often node-tar's live folder is copied to the host (``LivePuller`` default): a snapshot older
+#: than a few of these while the run says ``running`` is stale, not slow.
+LIVE_PULL_INTERVAL_SECONDS = 15.0
+CONTRACT_KEYS = ("c0", "c1", "c2")
+
+
+class RunKind(StrEnum):
+    EXPLORE = "explore"
+    VERIFY = "verify"
+    REPLAY = "replay"
+
+
+#: Seconds a live launcher can go without writing its log. The longest silent phase it allows is
+#: one image build: ``docker build --quiet`` prints only when it finishes and the launcher's own
+#: deadline for it is ``DEADLINE_BUILD=1800`` (``scripts/launcher_bounded.sh``, D049 condition 3);
+#: a build past that deadline is ended and logged. Every other phase is shorter (pip 300 s, copy
+#: 300 s) and the campaign writes a line per step (extractor timeout 10 s). Observed on HOST4
+#: (QA, 2026-11-20, python-tarfile 3.12.16, budget 20, warm images): the whole run took 54 s, the
+#: quietest stretch (preparing the controller) was under 28 s and steps came about every 1.3 s.
+#: 120 s of slack on top of the build deadline; ``tests/test_app_runs.py`` pins it to the script.
+LAUNCHER_QUIET_MAX_SECONDS = 1800 + 120
+
+
+class LaunchActivity(StrEnum):
+    """What the launcher log's last write says about a run seen only through it (an estimate)."""
+
+    #: written within :data:`LAUNCHER_QUIET_MAX_SECONDS`: launching or running
+    ACTIVE = "active"
+    #: quiet for longer than any phase a live launcher allows: it ended without its record
+    #: (killed, host restarted) or is stuck; not counted as running
+    NO_ACTIVITY = "no_activity"
+
+
+@dataclass(frozen=True, slots=True)
+class LauncherState:
+    """An id-less run's state, estimated from its launcher log (``estimated`` is always True)."""
+
+    activity: LaunchActivity
+    #: epoch seconds of the launcher log's last write (its mtime)
+    last_write: float
+    #: seconds from ``last_write`` to when the snapshot was read
+    age_seconds: float
+    log: Path
+    estimated: bool = True
+
+
+def launcher_activity(last_write: float, now: float) -> LaunchActivity:
+    """ACTIVE when the log was written within :data:`LAUNCHER_QUIET_MAX_SECONDS` of ``now``."""
+    quiet = now - last_write
+    return (
+        LaunchActivity.ACTIVE if quiet <= LAUNCHER_QUIET_MAX_SECONDS else LaunchActivity.NO_ACTIVITY
+    )
+
+
+class Source(StrEnum):
+    """Where the numbers of a view were read."""
+
+    LIVE = "live"  # live/progress.json (node-tar only)
+    RESULT = "result"  # result.json of a finished run
+    LAUNCHER_LOG = "launcher-log"  # only the launcher's ``==> [step]`` line (an estimate)
+    NONE = "none"
+
+
+class ReadState(StrEnum):
+    OK = "ok"
+    #: The file exists but does not parse (``result.json`` is written in place, not atomically).
+    NOT_READY = "not_ready"
+    #: The strict result reader refused it (e.g. written by a newer version): the values are the
+    #: stored ones, NOT validated. Show them only with that mark and ``RunSummary.error``.
+    UNVALIDATED = "unvalidated"
+    #: Present but not readable as this record (permissions, wrong schema, invalid content).
+    UNREADABLE = "unreadable"
+    MISSING = "missing"
+
+
+class Termination(StrEnum):
+    """How the extractor ended; independent of whether the oracle judged the run."""
+
+    SUCCESS = "success"
+    REJECTED = "rejected"
+    FAILED = "failed"
+    TIMED_OUT = "timed_out"
+    #: v2 policy only: the builder could not represent the input, so no extractor ran.
+    BUILD_INVALID = "build_invalid"
+    UNKNOWN = "unknown"
+
+
+class Judgment(StrEnum):
+    """Whether the oracle was evaluated on a case."""
+
+    JUDGED = "judged"
+    #: The oracle ran but gave no verdict on any contract (c0..c2 all null).
+    UNJUDGED = "unjudged"
+    #: Harness / execution-infrastructure error: the oracle was not evaluated at all.
+    RUN_ERROR = "run_error"
+
+
+class FindingClass(StrEnum):
+    """A violation the oracle flagged. Always a candidate until a replay says more."""
+
+    CANDIDATE = "candidate"
+    #: Flagged while the extractor did not succeed or the observation was incomplete.
+    CANDIDATE_NEEDS_REPRO_CHECK = "candidate_needs_repro_check"
+
+
+class ReplayConclusion(StrEnum):
+    REPRODUCED_VIOLATION = case_replay.REPRODUCED_VIOLATION
+    PARTIALLY_REPRODUCED = "partially_reproduced"
+    NOT_REPRODUCED = case_replay.NOT_REPRODUCED
+    NO_VIOLATION = case_replay.NO_VIOLATION
+    NEW_VIOLATION = case_replay.NEW_VIOLATION
+    UNJUDGED = case_replay.UNJUDGED
+    INFRASTRUCTURE_FAILURE = case_replay.INFRASTRUCTURE_FAILURE
+    NO_ROUNDS = "no_rounds"
+
+
+class Verdict(StrEnum):
+    PASS = "PASS"
+    FAIL = "FAIL"
+    ERROR = "ERROR"
+
+
+class RunOutcome(StrEnum):
+    """What a command's exit code says (``refused`` writes no folder, so only this shows it)."""
+
+    PASS = "pass"
+    FAIL = "fail"
+    ERROR = "error"
+    REFUSED = "refused"
+    COMPLETE = "complete"
+    INCOMPLETE = "incomplete"
+    UNSUPPORTED = "unsupported"
+    UNKNOWN = "unknown"
+
+
+_RUN_EXIT = {0: RunOutcome.PASS, 1: RunOutcome.FAIL, 2: RunOutcome.ERROR, 3: RunOutcome.REFUSED}
+_REPLAY_EXIT = {
+    0: RunOutcome.COMPLETE,
+    1: RunOutcome.INCOMPLETE,
+    2: RunOutcome.REFUSED,  # the folder cannot be replayed as the same input / conditions
+    3: RunOutcome.REFUSED,  # image not on this host, folder inside the repository, usage
+    4: RunOutcome.UNSUPPORTED,
+}
+
+
+def outcome_from_exit_code(command: str, code: int) -> RunOutcome:
+    """The documented meaning of ``inodefence <command>``'s exit code (``cli.py`` epilogs)."""
+    table = _REPLAY_EXIT if command == "replay" else _RUN_EXIT
+    if command not in ("explore", "verify", "replay"):
+        return RunOutcome.UNKNOWN
+    return table.get(code, RunOutcome.UNKNOWN)
+
+
+# -- records ---------------------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class RunRef:
+    """One run as found on disk. ``run_id_derived``: the id comes from a folder name."""
+
+    kind: RunKind
+    root: Path
+    run_id: str | None
+    run_id_derived: bool = True
+    target: str | None = None
+    version: str | None = None
+
+    @property
+    def key(self) -> str:
+        """Stable identity of the run across scans (kind, folder, id)."""
+        return f"{self.kind.value}:{self.root}:{self.run_id or ''}"
+
+
+@dataclass(frozen=True, slots=True)
+class RunProgress:
+    source: Source
+    state: str | None = None
+    runs: int | None = None
+    budget: int | None = None
+    runs_per_second: float | None = None
+    #: violating runs (each a candidate)
+    violations: int | None = None
+    unique_fingerprints: int | None = None
+    contracts: Mapping[str, int | None] = field(
+        default_factory=lambda: dict.fromkeys(CONTRACT_KEYS, None)
+    )
+    #: per-contract counts are a lower bound (not every violating run's case was readable)
+    contracts_lower_bound: bool = False
+    unjudged: int | None = None
+    terminations: Mapping[str, int | None] = field(default_factory=dict)
+    build_invalid: int | None = None
+    #: epoch seconds of the snapshot's own ``updated_at``
+    updated_at: float | None = None
+    #: the launcher's last ``==> [step]`` label (a hint of what it is doing, never a decision)
+    launcher_step: str | None = None
+    launcher_step_estimated: bool = True
+
+
+@dataclass(frozen=True, slots=True)
+class CaseRow:
+    case_id: str
+    run: int | None
+    termination: Termination
+    outcome: str | None
+    judgment: Judgment
+    c0: bool | None
+    c1: bool | None
+    c2: bool | None
+    observation_complete: bool | None
+    finding: FindingClass | None
+    fingerprints: tuple[str, ...] = ()
+    tar_sha256: str | None = None
+    input_path: Path | None = None
+    recorded_at: str | None = None
+    source: Source = Source.RESULT
+    #: the row is a known hand-built fixture of a ``fixture-regression`` result (a verify cell, a
+    #: controlled reproduction), not a case an exploration produced; ``finding`` is then ``None``.
+    #: ``None``: not known -- a result the strict reader refused whose ``mode`` is broken, found
+    #: outside a verify or explore folder; a violation is then neither a candidate nor a fixture
+    known_fixture: bool | None = False
+
+    @property
+    def violated(self) -> bool:
+        return True in (self.c0, self.c1, self.c2)
+
+    @property
+    def fixture_violation(self) -> bool:
+        """A known fixture the oracle flagged (controlled check; never a candidate)."""
+        return self.known_fixture is True and self.violated
+
+    @property
+    def unclassified_violation(self) -> bool:
+        """Flagged, but whether it is a known fixture or a candidate is not known (``None``)."""
+        return self.known_fixture is None and self.violated
+
+    @property
+    def contracts(self) -> dict[str, bool | None]:
+        return {"c0": self.c0, "c1": self.c1, "c2": self.c2}
+
+
+@dataclass(frozen=True, slots=True)
+class Integrity:
+    engine_sha: str | None
+    engine_dirty: bool | None
+    image_ref: str | None
+    image_id: str | None
+    lock_sha256: str | None = None
+    worker_sha256: str | None = None
+    #: ``(case_id, tar_sha256, path)`` of every saved input, as recorded
+    inputs: tuple[tuple[str, str, Path], ...] = ()
+    #: ``False`` until :func:`recheck_inputs` re-hashed the inputs ("not re-checked")
+    rechecked: bool = False
+    recheck_failures: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class RunSummary:
+    ref: RunRef | None
+    read_state: ReadState
+    #: ``True``: the strict result reader accepted the file (``read_state`` OK). ``False`` with
+    #: values: ``read_state`` is UNVALIDATED and the values are as stored (see ``error``).
+    validated: bool = False
+    result_path: Path | None = None
+    verdict: Verdict | None = None
+    label: str | None = None
+    mode: str | None = None
+    observed_contracts: tuple[str, ...] = ()
+    executed: int | None = None
+    errored: int | None = None
+    unjudged_steps: int | None = None
+    unjudged_ratio: float | None = None
+    max_unjudged_ratio: float | None = None
+    terminations: Mapping[str, int | None] = field(default_factory=dict)
+    no_extraction_warning: str | None = None
+    runs_to_first_violation: int | None = None
+    violation_capture: Mapping[str, Any] | None = None
+    integrity: Integrity | None = None
+    preparation: Mapping[str, Any] | None = None
+    benign_control: Mapping[str, Any] | None = None
+    cases: tuple[CaseRow, ...] = ()
+    #: campaign keys this reader does not know (a newer version's), as stored
+    extras: Mapping[str, Any] = field(default_factory=dict)
+    error: str | None = None
+    #: the result file's modification time (epoch seconds; lstat, never following a link). It is
+    #: when the file was last written, not a time the result records -- result.json has none.
+    #: ``None`` when there is no file or it cannot be stat-ed.
+    result_mtime: float | None = None
+
+    @property
+    def has_values(self) -> bool:
+        """Values were read: validated (``OK``) or as stored (``UNVALIDATED``, show the mark)."""
+        return self.read_state in (ReadState.OK, ReadState.UNVALIDATED)
+
+    @property
+    def candidates(self) -> tuple[CaseRow, ...]:
+        """Exploration cases the oracle flagged (each a :class:`FindingClass`)."""
+        return tuple(row for row in self.cases if row.finding is not None)
+
+    @property
+    def fixture_violations(self) -> tuple[CaseRow, ...]:
+        """Known fixtures the oracle flagged (``fixture-regression`` results only)."""
+        return tuple(row for row in self.cases if row.fixture_violation)
+
+    @property
+    def unclassified_violations(self) -> tuple[CaseRow, ...]:
+        """Flagged cases of an unvalidated result whose ``mode`` and run kind are both unknown."""
+        return tuple(row for row in self.cases if row.unclassified_violation)
+
+
+@dataclass(frozen=True, slots=True)
+class CaseComparison:
+    case_id: str
+    in_a: bool
+    in_b: bool
+    tar_sha256_a: str | None
+    tar_sha256_b: str | None
+    #: ``True`` only when both sides recorded the same SHA-256; ``None`` when either is missing
+    same_input: bool | None
+    a: CaseRow | None
+    b: CaseRow | None
+
+
+@dataclass(frozen=True, slots=True)
+class ReplayRound:
+    round: int | None
+    classification: str | None
+    termination: str | None
+    outcome: str | None
+    c0: bool | None
+    c1: bool | None
+    c2: bool | None
+    fingerprints: tuple[str, ...] = ()
+    reason: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ReplayRecord:
+    path: Path
+    read_state: ReadState
+    conclusion: ReplayConclusion | None = None
+    classification: Mapping[str, int] = field(default_factory=dict)
+    rounds_requested: int | None = None
+    rounds_done: int | None = None
+    #: the denominator of both rates (rounds the oracle judged), not ``rounds_done``
+    judged: int | None = None
+    unjudged: int | None = None
+    same_contracts: int | None = None
+    same_fingerprints: int | None = None
+    same_contracts_rate: float | None = None
+    fingerprint_match_rate: float | None = None
+    complete: bool | None = None
+    stop_reason: str | None = None
+    engine_differs: bool | None = None
+    original_case_id: str | None = None
+    original_tar_sha256: str | None = None
+    image_id: str | None = None
+    rounds: tuple[ReplayRound, ...] = ()
+    error: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class RunSnapshot:
+    ref: RunRef
+    #: epoch seconds when these files were read
+    read_at: float
+    progress: RunProgress | None = None
+    summary: RunSummary | None = None
+    #: exploration candidates only (rows with a :class:`FindingClass`)
+    findings: tuple[CaseRow, ...] = ()
+    replays: tuple[ReplayRecord, ...] = ()
+    read_errors: tuple[str, ...] = ()
+    launcher_log: Path | None = None
+    #: known fixtures the oracle flagged (a verify cell's controlled check; not candidates)
+    fixture_violations: tuple[CaseRow, ...] = ()
+    #: flagged cases of an unvalidated result whose mode and run kind are both unknown: neither
+    #: candidates nor fixtures ("unclassified (result not validated)")
+    unclassified_violations: tuple[CaseRow, ...] = ()
+    #: only for an exploration seen through its launcher log alone (``ref.run_id`` ``None``): its
+    #: state estimated from the log's last write. ``None`` for every other run.
+    launcher_state: LauncherState | None = None
+
+    def progress_age(self, now: float | None = None) -> float | None:
+        """Seconds since the progress snapshot's own ``updated_at`` (``None`` when unknown)."""
+        if self.progress is None or self.progress.updated_at is None:
+            return None
+        return max((self.read_at if now is None else now) - self.progress.updated_at, 0.0)
+
+
+@dataclass(frozen=True, slots=True)
+class RunListing:
+    path: Path
+    ref: RunRef | None
+    read_state: ReadState
+    error: str | None = None
+
+
+# -- small readers ---------------------------------------------------------------------------------
+
+
+def _map(value: object) -> Mapping[str, Any]:
+    return value if isinstance(value, Mapping) else {}
+
+
+def _map_or_none(value: object) -> Mapping[str, Any] | None:
+    """An object as stored, or ``None`` when the file holds anything else there."""
+    return value if isinstance(value, Mapping) else None
+
+
+def _list(value: object) -> list[Any]:
+    """A JSON array as stored, or empty when the file holds anything else there."""
+    return list(value) if isinstance(value, list | tuple) else []
+
+
+def _int(value: object) -> int | None:
+    return value if type(value) is int else None
+
+
+def _bool(value: object) -> bool | None:
+    return value if type(value) is bool else None
+
+
+def _str(value: object) -> str | None:
+    return value if isinstance(value, str) else None
+
+
+def _termination(value: object) -> Termination:
+    if value == "build-invalid":
+        return Termination.BUILD_INVALID
+    try:
+        return Termination(str(value))
+    except ValueError:
+        return Termination.UNKNOWN
+
+
+def _load_json(path: Path) -> tuple[Any, ReadState, str | None]:
+    try:
+        text = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return None, ReadState.MISSING, f"{path.name} not found"
+    except OSError as error:
+        return None, ReadState.UNREADABLE, f"{path}: {error}"
+    try:
+        return json.loads(text), ReadState.OK, None
+    except ValueError as error:
+        return None, ReadState.NOT_READY, f"{path.name} does not parse yet ({error})"
+
+
+def _row_from_verdict(
+    case: CaseVerdict,
+    inputs: Mapping[str, tuple[str, Path]],
+    run: int | None,
+    *,
+    known_fixture: bool | None = False,
+) -> CaseRow:
+    """A result case as a row; judgment and the repro-check flag come from :class:`CaseVerdict`.
+
+    ``known_fixture``: the result is a ``fixture-regression`` one, so a violation is a known
+    fixture's controlled check, not a candidate (``finding`` stays ``None``). ``None``: not
+    known, so a violation is not raised to a candidate either (it stays unclassified).
+    """
+    if case.is_run_error:
+        judgment = Judgment.RUN_ERROR
+    elif case.is_unjudged:
+        judgment = Judgment.UNJUDGED
+    else:
+        judgment = Judgment.JUDGED
+    finding = None
+    if case.violated and known_fixture is False:
+        finding = (
+            FindingClass.CANDIDATE_NEEDS_REPRO_CHECK
+            if case.needs_repro_check
+            else FindingClass.CANDIDATE
+        )
+    sha, path = inputs.get(case.case_id, (None, None))
+    return CaseRow(
+        case_id=case.case_id,
+        run=run,
+        termination=_termination(case.termination),
+        outcome=case.outcome,
+        judgment=judgment,
+        c0=case.c0,
+        c1=case.c1,
+        c2=case.c2,
+        observation_complete=case.observation_complete,
+        finding=finding,
+        tar_sha256=sha,
+        input_path=path,
+        source=Source.RESULT,
+        known_fixture=known_fixture,
+    )
+
+
+def _run_number(case_id: str) -> int | None:
+    """``step-N`` (an exploration case) -> ``N``; any other id has no run number."""
+    head, _, tail = case_id.partition("-")
+    return int(tail) if head == "step" and tail.isdigit() else None
+
+
+def _row_from_live_case(record: Mapping[str, Any], live_dir: Path) -> CaseRow:
+    contracts = {key: _bool(record.get(key)) for key in CONTRACT_KEYS}
+    unjudged = record.get("unjudged") is True or all(v is None for v in contracts.values())
+    violated = True in contracts.values()
+    finding = None
+    if violated:
+        finding = (
+            FindingClass.CANDIDATE_NEEDS_REPRO_CHECK
+            if record.get("needs_repro_check") is True
+            else FindingClass.CANDIDATE
+        )
+    folder = _str(record.get("dir"))
+    tar = _str(record.get("tar"))
+    return CaseRow(
+        case_id=str(record.get("case_id") or record.get("dir") or "?"),
+        run=_int(record.get("run")),
+        termination=_termination(record.get("status")),
+        outcome=None,
+        judgment=Judgment.UNJUDGED if unjudged else Judgment.JUDGED,
+        observation_complete=_bool(record.get("observation_complete")),
+        finding=finding,
+        fingerprints=tuple(str(fp) for fp in record.get("fingerprints") or ()),
+        tar_sha256=_str(record.get("tar_sha256")),
+        input_path=live_dir / folder / tar if folder and tar else None,
+        recorded_at=_str(record.get("recorded_at")),
+        source=Source.LIVE,
+        c0=contracts["c0"],
+        c1=contracts["c1"],
+        c2=contracts["c2"],
+    )
+
+
+_KNOWN_CAMPAIGN = (
+    (_CAMPAIGN_KEYS | _CAMPAIGN_OPTIONAL)
+    | {f.name for f in fields(CampaignInfo)}
+    | {"unjudged_ratio"}
+)
+
+
+def _split_extras(data: Mapping[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    """``data`` without the campaign keys this reader does not know, and those keys."""
+    campaign = data.get("campaign")
+    if not isinstance(campaign, Mapping):
+        return dict(data), {}
+    extras = {k: v for k, v in campaign.items() if k not in _KNOWN_CAMPAIGN}
+    if not extras:
+        return dict(data), {}
+    known = {k: v for k, v in campaign.items() if k in _KNOWN_CAMPAIGN}
+    return {**data, "campaign": known}, extras
+
+
+def _integrity(
+    provenance: Mapping[str, Any] | None,
+    preparation: Mapping[str, Any] | None,
+    inputs: Mapping[str, tuple[str, Path]],
+) -> Integrity:
+    prov = _map(provenance)  # a result refused by the strict reader may hold anything here
+    prep = _map(preparation)
+    return Integrity(
+        engine_sha=_str(prov.get("engine_sha")),
+        engine_dirty=_bool(prov.get("engine_dirty")),
+        image_ref=_str(prov.get("image_ref")),
+        image_id=_str(prov.get("image_id")),
+        lock_sha256=_str(prep.get("lock_sha256")),
+        worker_sha256=_str(prep.get("worker_sha256")),
+        inputs=tuple((case_id, sha, path) for case_id, (sha, path) in inputs.items()),
+    )
+
+
+def _inputs(data: Mapping[str, Any], folder: Path) -> dict[str, tuple[str, Path]]:
+    found: dict[str, tuple[str, Path]] = {}
+    for item in _list(data.get("repro_inputs")):
+        if isinstance(item, Mapping):
+            case_id, sha, rel = item.get("case_id"), item.get("tar_sha256"), item.get("tar_path")
+            if isinstance(case_id, str) and isinstance(sha, str) and isinstance(rel, str):
+                found[case_id] = (sha, folder / rel)
+    return found
+
+
+def _summary_from_result(
+    result: TargetResult, data: Mapping[str, Any], path: Path, ref: RunRef | None, extras: dict
+) -> RunSummary:
+    inputs = _inputs(data, path.parent)
+    campaign = result.campaign
+    terminations: dict[str, int | None] = dict(result.termination_counts)
+    stored = campaign is not None and campaign.terminations is not None
+    if not stored and all(case.termination is None for case in result.cases):
+        # no aggregate and no case recorded how it ended (a verify cell): unknown, not zero
+        terminations = dict.fromkeys(TERMINATIONS)
+    known_fixture = result.mode is ResultMode.FIXTURE_REGRESSION
+    return RunSummary(
+        ref=ref,
+        read_state=ReadState.OK,
+        validated=True,
+        result_path=path,
+        verdict=Verdict(result.verdict.value),
+        label=result.label,
+        mode=result.mode.value,
+        observed_contracts=tuple(result.observed_contracts),
+        executed=result.executed,
+        errored=result.errored,
+        unjudged_steps=result.unjudged_steps,
+        unjudged_ratio=result.unjudged_ratio,
+        max_unjudged_ratio=campaign.max_unjudged_ratio if campaign else None,
+        terminations=terminations,
+        no_extraction_warning=_warning(terminations),
+        runs_to_first_violation=campaign.runs_to_first_violation if campaign else None,
+        violation_capture=campaign.violation_capture if campaign else None,
+        integrity=_integrity(data.get("provenance"), data.get("preparation"), inputs),
+        preparation=_map_or_none(data.get("preparation")),
+        benign_control=_map_or_none(data.get("benign_control")),
+        cases=tuple(
+            _row_from_verdict(case, inputs, _run_number(case.case_id), known_fixture=known_fixture)
+            for case in result.cases
+        ),
+        extras=extras,
+    )
+
+
+def _warning(terminations: Mapping[str, int | None]) -> str | None:
+    """:func:`no_extraction_warning` over the known counts (``None`` when none is known)."""
+    known = {k: v for k, v in terminations.items() if v is not None}
+    return no_extraction_warning(known) if known else None
+
+
+def _known_fixture(mode: object, ref: RunRef | None) -> bool | None:
+    """Whether a stored result's violations are known fixtures: by its own ``mode`` when that is
+    readable, else by the kind of folder it was found in (a verify cell or an exploration), else
+    ``None`` -- unknown, which never turns a violation into a candidate."""
+    if mode == ResultMode.FIXTURE_REGRESSION.value:
+        return True
+    if mode == ResultMode.CAMPAIGN.value:
+        return False
+    if ref is not None and ref.kind is RunKind.VERIFY:
+        return True
+    if ref is not None and ref.kind is RunKind.EXPLORE:
+        return False
+    return None
+
+
+def _summary_as_stored(
+    data: Mapping[str, Any], path: Path, ref: RunRef | None, extras: dict, error: str
+) -> RunSummary:
+    """The stored values of a result the strict reader refused (``validated=False``)."""
+    inputs = _inputs(data, path.parent)
+    campaign = _map(data.get("campaign"))
+    runs = _map(data.get("runs"))
+    stored = campaign.get("terminations")
+    terminations = {k: _int(v) for k, v in stored.items()} if isinstance(stored, Mapping) else {}
+    verdict = data.get("verdict")
+    known_fixture = _known_fixture(data.get("mode"), ref)
+    rows = []
+    for case in _list(data.get("cases")):
+        if not isinstance(case, Mapping) or not isinstance(case.get("case_id"), str):
+            continue
+        verdict_case = CaseVerdict(
+            case_id=case["case_id"],
+            outcome=str(case.get("outcome")),
+            c0=_bool(case.get("c0")),
+            c1=_bool(case.get("c1")),
+            c2=_bool(case.get("c2")),
+            termination=_str(case.get("termination")),
+            observation_complete=_bool(case.get("observation_complete")),
+        )
+        rows.append(
+            _row_from_verdict(
+                verdict_case, inputs, _run_number(case["case_id"]), known_fixture=known_fixture
+            )
+        )
+    return RunSummary(
+        ref=ref,
+        read_state=ReadState.UNVALIDATED,
+        validated=False,
+        result_path=path,
+        verdict=Verdict(verdict)
+        if isinstance(verdict, str) and verdict in Verdict.__members__
+        else None,
+        label=_str(data.get("label")),
+        mode=_str(data.get("mode")),
+        observed_contracts=tuple(str(c) for c in _list(data.get("observed_contracts"))),
+        executed=_int(runs.get("executed")),
+        errored=_int(runs.get("errored")),
+        unjudged_steps=_int(campaign.get("unjudged_steps")),
+        unjudged_ratio=campaign.get("unjudged_ratio")
+        if isinstance(campaign.get("unjudged_ratio"), int | float)
+        else None,
+        max_unjudged_ratio=campaign.get("max_unjudged_ratio")
+        if isinstance(campaign.get("max_unjudged_ratio"), int | float)
+        else None,
+        terminations=terminations,
+        no_extraction_warning=_warning(terminations),
+        runs_to_first_violation=_int(campaign.get("runs_to_first_violation")),
+        violation_capture=_map_or_none(campaign.get("violation_capture")),
+        integrity=_integrity(data.get("provenance"), data.get("preparation"), inputs),
+        preparation=_map_or_none(data.get("preparation")),
+        benign_control=_map_or_none(data.get("benign_control")),
+        cases=tuple(rows),
+        extras=extras,
+        error=error,
+    )
+
+
+def _lstat_mtime(path: Path) -> float | None:
+    try:
+        info = path.lstat()
+    except OSError:
+        return None
+    return None if stat.S_ISLNK(info.st_mode) else info.st_mtime
+
+
+def read_result(path: Path, ref: RunRef | None = None) -> RunSummary:
+    """See :func:`_read_result`; the summary also carries the file's ``result_mtime``."""
+    return replace(_read_result(path, ref), result_mtime=_lstat_mtime(path))
+
+
+def _read_result(path: Path, ref: RunRef | None = None) -> RunSummary:
+    """One ``result.json`` (an explore result or a verify cell) as a :class:`RunSummary`.
+
+    The strict reader (:func:`inodefence.target_result.from_json_dict`) is tried first, after
+    campaign keys it does not know are set aside in ``extras``; if it still refuses the file (a
+    newer version's derived fields, say), the stored values are returned with ``validated=False``
+    and the reason in ``error``. Inputs are not re-hashed here (:func:`recheck_inputs`).
+    """
+    data, state, error = _load_json(path)
+    if state is not ReadState.OK:
+        return RunSummary(ref=ref, read_state=state, result_path=path, error=error)
+    if not isinstance(data, Mapping) or data.get("schema") != RESULT_SCHEMA:
+        return RunSummary(
+            ref=ref,
+            read_state=ReadState.UNREADABLE,
+            result_path=path,
+            error=f"{path.name} is not an {RESULT_SCHEMA} record",
+        )
+    known, extras = _split_extras(data)
+    try:
+        result = from_json_dict(known)
+    except (TargetResultError, TypeError, ValueError, KeyError) as refused:
+        ref = _ref_with_axes(ref, data)
+        reason = f"strict reader refused: {refused}"
+        try:
+            return _summary_as_stored(data, path, ref, extras, reason)
+        except Exception as broken:  # noqa: BLE001 -- one bad file must never end a whole scan
+            return RunSummary(
+                ref=ref,
+                read_state=ReadState.UNREADABLE,
+                result_path=path,
+                error=f"{reason}; stored values not readable either "
+                f"({type(broken).__name__}: {broken})",
+            )
+    return _summary_from_result(result, data, path, _ref_with_axes(ref, data), extras)
+
+
+def _ref_with_axes(ref: RunRef | None, data: Mapping[str, Any]) -> RunRef | None:
+    """``ref`` with the result's own target and version (``axes.target_version`` or, for
+    python-tarfile, ``axes.runtime_version``); values the file does not hold stay ``None``."""
+    if ref is None:
+        return None
+    axes = _map(data.get("axes"))
+    version = _str(axes.get("target_version")) or _str(axes.get("runtime_version"))
+    return replace(
+        ref, target=_str(data.get("target")) or ref.target, version=version or ref.version
+    )
+
+
+def recheck_inputs(summary: RunSummary) -> Integrity:
+    """Re-hash every saved input against its recorded SHA-256 (only when asked)."""
+    if summary.integrity is None:
+        return Integrity(None, None, None, None, rechecked=True, recheck_failures=("no result",))
+    failures = []
+    for case_id, recorded, path in summary.integrity.inputs:
+        try:
+            actual = sha256(path.read_bytes()).hexdigest()
+        except OSError as error:
+            failures.append(f"{case_id}: {error}")
+            continue
+        if actual != recorded:
+            failures.append(f"{case_id}: SHA-256 {actual} != recorded {recorded}")
+    return replace(summary.integrity, rechecked=True, recheck_failures=tuple(failures))
+
+
+def compare_results(a: RunSummary, b: RunSummary) -> tuple[CaseComparison, ...]:
+    """Two results case by case (scene "same input, two versions"). ``same_input`` is ``True``
+    only when both sides recorded the same input SHA-256; a missing side or hash gives ``None``."""
+    rows_a = {row.case_id: row for row in a.cases}
+    rows_b = {row.case_id: row for row in b.cases}
+    ordered = list(rows_a) + [case_id for case_id in rows_b if case_id not in rows_a]
+    out = []
+    for case_id in ordered:
+        row_a, row_b = rows_a.get(case_id), rows_b.get(case_id)
+        sha_a = row_a.tar_sha256 if row_a else None
+        sha_b = row_b.tar_sha256 if row_b else None
+        same = None if sha_a is None or sha_b is None else sha_a == sha_b
+        out.append(
+            CaseComparison(
+                case_id, row_a is not None, row_b is not None, sha_a, sha_b, same, row_a, row_b
+            )  # fmt: skip
+        )
+    return tuple(out)
+
+
+def read_replay(path: Path) -> ReplayRecord:
+    """One ``replay.json`` (or its folder). Rates are over judged rounds, as the record stores."""
+    file = path / case_replay.REPLAY_FILE if path.is_dir() else path
+    data, state, error = _load_json(file)
+    if state is not ReadState.OK:
+        return ReplayRecord(path=file, read_state=state, error=error)
+    if not isinstance(data, Mapping) or data.get("schema") != case_replay.REPLAY_SCHEMA:
+        return ReplayRecord(
+            path=file,
+            read_state=ReadState.UNREADABLE,
+            error=f"{file.name} is not an {case_replay.REPLAY_SCHEMA} record",
+        )
+    summary = _map(data.get("summary"))
+    replay = _map(data.get("replay"))
+    original = _map(data.get("original"))
+    try:
+        conclusion = ReplayConclusion(str(summary.get("conclusion")))
+    except ValueError:
+        conclusion = None
+    rounds = tuple(
+        ReplayRound(
+            round=_int(entry.get("round")),
+            classification=_str(entry.get("classification")),
+            termination=_str(entry.get("termination")),
+            outcome=_str(entry.get("outcome")),
+            c0=_bool(entry.get("c0")),
+            c1=_bool(entry.get("c1")),
+            c2=_bool(entry.get("c2")),
+            fingerprints=tuple(str(fp) for fp in entry.get("fingerprints") or ()),
+            reason=_str(entry.get("reason")),
+        )
+        for entry in data.get("rounds") or ()
+        if isinstance(entry, Mapping)
+    )
+    classification = summary.get("classification")
+
+    def rate(key: str) -> float | None:
+        value = summary.get(key)
+        return float(value) if isinstance(value, int | float) and type(value) is not bool else None
+
+    return ReplayRecord(
+        path=file,
+        read_state=ReadState.OK,
+        conclusion=conclusion,
+        classification={str(k): v for k, v in classification.items() if type(v) is int}
+        if isinstance(classification, Mapping)
+        else {},
+        rounds_requested=_int(replay.get("rounds_requested")),
+        rounds_done=_int(summary.get("rounds_done")),
+        judged=_int(summary.get("judged")),
+        unjudged=_int(summary.get("unjudged")),
+        same_contracts=_int(summary.get("same_contracts")),
+        same_fingerprints=_int(summary.get("same_fingerprints")),
+        same_contracts_rate=rate("same_contracts_rate"),
+        fingerprint_match_rate=rate("fingerprint_match_rate"),
+        complete=_bool(replay.get("complete")),
+        stop_reason=_str(replay.get("stop_reason")),
+        engine_differs=_bool(replay.get("engine_differs")),
+        original_case_id=_str(original.get("case_id")),
+        original_tar_sha256=_str(original.get("tar_sha256")),
+        image_id=_str(replay.get("image_id")),
+        rounds=rounds,
+    )
+
+
+# -- runs on disk ----------------------------------------------------------------------------------
+
+
+def default_roots(config: UserConfig | None = None) -> tuple[Path, ...]:
+    """The default ``--out`` folders of explore and verify (under the configured output base)."""
+    if config is None:
+        try:
+            config = load_user_config()
+        except (UserConfigError, OSError):
+            return (Path.home() / EXPLORE_OUT_NAME, Path.home() / VERIFY_OUT_NAME)
+    return (config.default_out(EXPLORE_OUT_NAME), config.default_out(VERIFY_OUT_NAME))
+
+
+def _inside_repository(path: Path) -> bool:
+    try:
+        resolved = path.resolve()
+    except OSError:
+        return False
+    return any(is_repo(candidate) for candidate in (resolved, *resolved.parents))
+
+
+def _mtime(path: Path) -> float:
+    try:
+        return path.stat().st_mtime
+    except OSError:
+        return 0.0
+
+
+def _classify(folder: Path) -> RunRef | None:
+    """The run a folder is, by the layout the drivers write (``None``: not a run folder)."""
+    name = folder.name
+    if (folder / case_replay.REPLAY_FILE).is_file():
+        return RunRef(RunKind.REPLAY, folder, name)
+    parent = folder.parent
+    if parent.name == EXPLORE_DIR and name.endswith(RESULT_SUFFIX):
+        if (folder / RESULT_FILE).exists():
+            return RunRef(RunKind.EXPLORE, parent.parent, name[: -len(RESULT_SUFFIX)])
+    if parent.name == EXPLORE_DIR and (folder / "live").is_dir():
+        return RunRef(RunKind.EXPLORE, parent.parent, name)
+    if (folder / RESULT_FILE).exists() and parent.name != EXPLORE_DIR:
+        return RunRef(RunKind.VERIFY, folder, name)
+    return None
+
+
+def discover_runs(
+    roots: Iterable[Path] | None = None,
+    *,
+    extra: Iterable[Path] = (),
+    max_depth: int = 4,
+    max_entries: int = 5000,
+) -> list[RunListing]:
+    """Runs under ``roots`` (default :func:`default_roots`) plus ``extra`` folders, newest first.
+
+    Read-only: nothing is written or cached on disk. Symbolic links are not followed, folders
+    inside this repository are not scanned (outputs never belong there), dot folders are skipped,
+    and the walk stops at ``max_depth`` levels and ``max_entries`` folders. A folder that cannot be
+    read is listed as :attr:`ReadState.UNREADABLE` instead of raising.
+    """
+    starts = [*(default_roots() if roots is None else roots), *extra]
+    found: dict[str, tuple[float, RunListing]] = {}
+    seen = 0
+    for start in starts:
+        start = Path(start).expanduser()
+        if not start.exists():
+            continue
+        if start.is_symlink() or _inside_repository(start):
+            reason = "symbolic link" if start.is_symlink() else "inside the repository"
+            found[f"skip:{start}"] = (
+                0.0,
+                RunListing(start, None, ReadState.UNREADABLE, f"not scanned: {reason}"),
+            )
+            continue
+        stack = [(start, 0)]
+        while stack and seen < max_entries:
+            folder, depth = stack.pop()
+            seen += 1
+            try:
+                ref = _classify(folder)
+                if ref is None and (folder / RUNTIME_DIR).is_dir():
+                    ref = _launcher_only_run(folder)
+            # OSError: Path.is_file() raises on EACCES (only ENOENT is quiet); anything else is a
+            # folder this scan did not foresee -- listed as unreadable, never ending the scan
+            except Exception as error:  # noqa: BLE001
+                found[f"error:{folder}"] = (
+                    0.0,
+                    RunListing(folder, None, ReadState.UNREADABLE, str(error)),
+                )
+                continue
+            if ref is not None:
+                listing = RunListing(folder, ref, ReadState.OK)
+                found.setdefault(ref.key, (_mtime(folder), listing))
+            if depth >= max_depth:
+                continue
+            try:
+                entries = list(os.scandir(folder))
+            except OSError as error:
+                found[f"error:{folder}"] = (
+                    0.0,
+                    RunListing(folder, None, ReadState.UNREADABLE, str(error)),
+                )
+                continue
+            for entry in entries:
+                if entry.name.startswith(".") or entry.is_symlink():
+                    continue
+                try:
+                    if entry.is_dir(follow_symlinks=False):
+                        stack.append((Path(entry.path), depth + 1))
+                except OSError:
+                    continue
+    ordered = sorted(found.values(), key=lambda item: item[0], reverse=True)
+    return [listing for _, listing in ordered]
+
+
+def _latest_launcher_log(root: Path) -> Path | None:
+    """The newest explore launcher log under ``<root>/runtime`` (an estimate: logs are named by
+    time and process, not by run id, so with several runs in one folder this is the newest)."""
+    try:
+        logs = sorted((root / RUNTIME_DIR).glob(LAUNCHER_LOG_GLOB), key=_mtime)
+    except OSError:
+        return None
+    return logs[-1] if logs else None
+
+
+def _launcher_only_run(folder: Path) -> RunRef | None:
+    """An exploration under ``folder`` that so far has written only its launcher log.
+
+    python-tarfile, decompress and oras-go write nothing under ``target-explore/`` until they end,
+    and the runtime record is written after the launcher's last line. So the newest launcher log
+    is a run in progress when no runtime record was written at or after its last write, and no
+    live folder or ``-result`` folder was written since it started (that run is listed by its own
+    folder: node-tar's live folder, or the result). The run id is not known until the end
+    (``run_id`` ``None``). A launch killed without its record stays listed like this.
+    """
+    log = _latest_launcher_log(folder)
+    match = _LAUNCHER_LOG_START.match(log.name) if log is not None else None
+    if log is None or match is None:
+        return None
+    started = datetime.strptime(match[1], "%Y%m%dT%H%M%SZ").replace(tzinfo=UTC).timestamp()
+    last_write = _mtime(log)
+    explore = folder / EXPLORE_DIR
+    try:
+        records = list((folder / RUNTIME_DIR).glob("*.json"))
+        written = [*explore.glob("*/live"), *explore.glob(f"*{RESULT_SUFFIX}")]
+    except OSError:
+        return None
+    if any(_mtime(record) >= last_write for record in records):
+        return None
+    if any(max(_mtime(p), _mtime(p / PROGRESS_FILE)) >= started for p in written):
+        return None
+    return RunRef(RunKind.EXPLORE, folder, None, run_id_derived=False)
+
+
+def _progress(counts: progress_reader.Counts, raw: Mapping[str, Any] | None, step: str | None):
+    violations = raw.get("violations") if raw else None
+    build_invalid = raw.get("build_invalid") if raw else None
+    return RunProgress(
+        source=Source(counts.source),
+        state=counts.state,
+        runs=counts.runs,
+        budget=counts.budget,
+        runs_per_second=counts.runs_per_second,
+        violations=counts.violations,
+        unique_fingerprints=_int(violations.get("unique_fingerprints"))
+        if isinstance(violations, Mapping)
+        else None,
+        contracts=dict(counts.contracts),
+        contracts_lower_bound=counts.contracts_lower_bound,
+        unjudged=counts.unjudged,
+        terminations=dict(counts.terminations),
+        # absent in progress.json means zero only on a live snapshot (it is written when > 0)
+        build_invalid=(
+            _int(build_invalid.get("steps"))
+            if isinstance(build_invalid, Mapping)
+            else (0 if raw is not None else None)
+        ),
+        updated_at=counts.updated_at,
+        launcher_step=step,
+    )
+
+
+def _replays_beside(folders: Sequence[Path]) -> tuple[ReplayRecord, ...]:
+    """Replay folders written beside case or result folders (``<name>.replay-<UTC>/``)."""
+    records = []
+    for folder in folders:
+        try:
+            candidates = sorted(folder.parent.glob(f"{folder.name}.replay-*"))
+        except OSError:
+            continue
+        records += [read_replay(c) for c in candidates if c.is_dir() and not c.is_symlink()]
+    return tuple(records)
+
+
+def read_run(ref: RunRef, *, now: float | None = None) -> RunSnapshot:
+    """Everything the files say about one run right now. Never raises for bad input.
+
+    If reading one run fails in a way the readers below did not foresee, that run alone comes back
+    as an :attr:`ReadState.UNREADABLE` summary with the reason -- it is never dropped silently and
+    never takes the other runs of a scan with it.
+    """
+    import time
+
+    read_at = time.time() if now is None else now
+    try:
+        return _read_run(ref, read_at)
+    except Exception as error:  # noqa: BLE001 -- one run's files must not end every view
+        reason = f"could not read this run: {type(error).__name__}: {error}"
+        summary = RunSummary(ref=ref, read_state=ReadState.UNREADABLE, error=reason)
+        return RunSnapshot(ref, read_at, summary=summary, read_errors=(reason,))
+
+
+def _read_run(ref: RunRef, read_at: float) -> RunSnapshot:
+    errors: list[str] = []
+    if ref.kind is RunKind.REPLAY:
+        record = read_replay(ref.root)
+        if record.error:
+            errors.append(record.error)
+        return RunSnapshot(ref, read_at, replays=(record,), read_errors=tuple(errors))
+    if ref.kind is RunKind.VERIFY:
+        summary = read_result(ref.root / RESULT_FILE, ref)
+        if summary.error:
+            errors.append(summary.error)
+        ref = _with_axes(ref, summary)
+        progress = None
+        if summary.has_values:
+            progress = _progress_from_summary(summary)
+        return RunSnapshot(
+            ref, read_at, progress=progress, summary=replace(summary, ref=ref),
+            findings=summary.candidates, read_errors=tuple(errors),
+            fixture_violations=summary.fixture_violations,
+            unclassified_violations=summary.unclassified_violations,
+        )  # fmt: skip
+    # explore
+    base = ref.root / EXPLORE_DIR
+    run_id = ref.run_id or ""
+    result_dir = base / f"{run_id}{RESULT_SUFFIX}"
+    # an id-less run (seen only through its launcher log) has no folder of its own yet: never
+    # pick up another run's live or result folder for it
+    live_dirs = find_live_dirs(base / run_id) if run_id and (base / run_id).is_dir() else []
+    live = live_dirs[0] if live_dirs else None
+    summary = None
+    if run_id and (result_dir / RESULT_FILE).exists():
+        summary = read_result(result_dir / RESULT_FILE, ref)
+        if summary.error:
+            errors.append(summary.error)
+    raw = read_progress(live) if live is not None else None
+    # The launcher log is named by time and process, not by run: attach its step only to a run that
+    # has not ended (no result file, no ended live state), and only as an estimate.
+    ended = summary is not None or (raw is not None and raw.get("state") != "running")
+    log = None if ended else _latest_launcher_log(ref.root)
+    step = progress_reader.last_launcher_step(log) if log is not None else None
+    progress: RunProgress | None = None
+    findings: list[CaseRow] = []
+    if live is not None:
+        if raw is None and (live / PROGRESS_FILE).exists():
+            errors.append(f"{live / PROGRESS_FILE} could not be read")
+        try:
+            cases = list_violation_cases(live)
+        except OSError as error:
+            errors.append(f"violation cases: {error}")
+            cases = None
+        if raw is not None:
+            progress = _progress(progress_reader.counts_from_progress(raw, cases), raw, step)
+        findings = [_row_from_live_case(case, live) for case in cases or ()]
+    if summary is not None and summary.has_values and progress is None:
+        progress = replace(_progress_from_summary(summary), launcher_step=step)
+    if progress is None:
+        progress = RunProgress(
+            source=Source.LAUNCHER_LOG if step else Source.NONE, launcher_step=step
+        )
+    if not findings and summary is not None:
+        findings = [row for row in summary.cases if row.finding is not None]
+    if summary is not None:
+        ref = _with_axes(ref, summary)
+        summary = replace(summary, ref=ref)
+    elif raw is not None:
+        ref = replace(ref, target=_str(raw.get("target")), version=_str(raw.get("version")))
+    replay_sources = [result_dir] + [
+        live / str(row.input_path.parent.relative_to(live))
+        for row in findings
+        if live is not None and row.input_path is not None and row.input_path.is_relative_to(live)
+    ]
+    return RunSnapshot(
+        ref,
+        read_at,
+        progress=progress,
+        summary=summary,
+        findings=tuple(findings),
+        replays=_replays_beside(replay_sources),
+        read_errors=tuple(errors),
+        launcher_log=log,
+        fixture_violations=summary.fixture_violations if summary is not None else (),
+        unclassified_violations=summary.unclassified_violations if summary is not None else (),
+        launcher_state=_launcher_state(log, read_at) if not run_id and log is not None else None,
+    )
+
+
+def _launcher_state(log: Path, now: float) -> LauncherState | None:
+    last_write = _lstat_mtime(log)
+    if last_write is None:
+        return None
+    return LauncherState(
+        activity=launcher_activity(last_write, now),
+        last_write=last_write,
+        age_seconds=max(now - last_write, 0.0),
+        log=log,
+    )
+
+
+def _with_axes(ref: RunRef, summary: RunSummary) -> RunRef:
+    if not summary.has_values or summary.result_path is None:
+        return ref
+    data, state, _ = _load_json(summary.result_path)
+    if state is not ReadState.OK or not isinstance(data, Mapping):
+        return ref
+    axes = _map(data.get("axes"))
+    version = _str(axes.get("target_version")) or _str(axes.get("runtime_version"))
+    return replace(ref, target=_str(data.get("target")), version=version)
+
+
+def _progress_from_summary(summary: RunSummary) -> RunProgress:
+    """A finished run's numbers through the existing result reader (``counts_from_result``)."""
+    counts = (
+        progress_reader.counts_from_result(summary.result_path)
+        if summary.validated and summary.result_path is not None
+        else None
+    )
+    if counts is None:
+        return RunProgress(
+            source=Source.RESULT,
+            runs=summary.executed,
+            unjudged=summary.unjudged_steps,
+            terminations=dict(summary.terminations),
+        )
+    progress = _progress(counts, None, None)
+    if summary.terminations and all(v is None for v in summary.terminations.values()):
+        progress = replace(progress, terminations=dict(summary.terminations))
+    return progress
+
+
+def read_verify(out_dir: Path) -> tuple[RunSummary, ...]:
+    """Every verify cell under ``out_dir`` (``<out>/<cell>/result.json``), by folder name."""
+    try:
+        cells = sorted(p for p in out_dir.iterdir() if p.is_dir() and not p.is_symlink())
+    except OSError:
+        return ()
+    return tuple(
+        read_result(cell / RESULT_FILE, RunRef(RunKind.VERIFY, cell, cell.name))
+        for cell in cells
+        if (cell / RESULT_FILE).exists()
+    )
+
+
+# -- artifacts of one run (metadata only) ----------------------------------------------------------
+
+
+class ArtifactKind(StrEnum):
+    RESULT = "result"
+    INPUT_TAR = "input_tar"
+    LIVE_PROGRESS = "live_progress"
+    LIVE_FETCH = "live_fetch"
+    CASE_FOLDER = "case_folder"
+    LOOP_REPORT = "loop_report"
+    RUNTIME_RECORD = "runtime_record"
+    LAUNCHER_LOG = "launcher_log"
+    REPLAY = "replay"
+    REPLAY_EVIDENCE = "replay_evidence"
+    SUMMARY = "summary"
+
+
+@dataclass(frozen=True, slots=True)
+class ArtifactEntry:
+    """One file or folder a run left. Only metadata: nothing here reads a file's content (an input
+    TAR's ``tar_sha256`` is the one RECORDED for it, not a re-hash; see :func:`recheck_inputs`)."""
+
+    kind: ArtifactKind
+    path: Path
+    read_state: ReadState
+    #: bytes (a folder: ``None``); ``None`` when it could not be stat-ed
+    size: int | None = None
+    #: epoch seconds of the last modification; ``None`` when unknown
+    mtime: float | None = None
+    tar_sha256: str | None = None
+    case_id: str | None = None
+    #: a symbolic link, listed but not followed (``read_state`` UNREADABLE, no size)
+    symlink: bool = False
+
+
+def _entry(
+    kind: ArtifactKind,
+    path: Path,
+    read_state: ReadState | None = None,
+    **extra: Any,
+) -> ArtifactEntry:
+    """``lstat`` ``path`` (never open it, never follow a link). ``read_state`` given: what a
+    reader already found. A symbolic link is listed as itself (``symlink=True``, not read, no
+    size): what it points to -- possibly outside the run folder -- is not looked at."""
+    try:
+        info = path.lstat()
+    except FileNotFoundError:
+        return ArtifactEntry(kind, path, ReadState.MISSING, **extra)
+    except OSError:
+        return ArtifactEntry(kind, path, ReadState.UNREADABLE, **extra)
+    if stat.S_ISLNK(info.st_mode):
+        return ArtifactEntry(kind, path, ReadState.UNREADABLE, None, info.st_mtime,
+                             symlink=True, **extra)  # fmt: skip
+    size = None if stat.S_ISDIR(info.st_mode) else info.st_size
+    return ArtifactEntry(kind, path, read_state or ReadState.OK, size, info.st_mtime, **extra)
+
+
+def _globbed(folder: Path, pattern: str) -> list[Path]:
+    try:
+        return sorted(p for p in folder.glob(pattern) if not p.is_symlink())
+    except OSError:
+        return []
+
+
+def list_artifacts(snapshot: RunSnapshot) -> tuple[ArtifactEntry, ...]:
+    """The files and folders one run left, with kind, path, read state, size and mtime.
+
+    Read-only and metadata only: files are stat-ed, never opened (the result and replay read
+    states are the ones :func:`read_run` already found). Missing expected files are listed as
+    :attr:`ReadState.MISSING`; nothing is invented for a file that does not exist.
+    """
+    ref, out = snapshot.ref, []
+    summary = snapshot.summary
+    if ref.kind is RunKind.EXPLORE:
+        base = ref.root / EXPLORE_DIR
+        run_id = ref.run_id or ""
+        result = base / f"{run_id}{RESULT_SUFFIX}" / RESULT_FILE
+        if summary is not None or result.exists():
+            state = summary.read_state if summary is not None else None
+            out.append(_entry(ArtifactKind.RESULT, result, state))
+            record = result.parent / "runtime-record.json"
+            if record.exists():
+                out.append(_entry(ArtifactKind.RUNTIME_RECORD, record))
+        out += [
+            _entry(ArtifactKind.LOOP_REPORT, path) for path in _globbed(base, f"*-{run_id}.json")
+        ]
+        live_dirs = find_live_dirs(base / run_id) if (base / run_id).is_dir() else []
+        for live in live_dirs[:1]:
+            progress = live / PROGRESS_FILE
+            if progress.exists():
+                # what read_run already found (no second read): live numbers came from this file
+                read = snapshot.progress is not None and snapshot.progress.source is Source.LIVE
+                state = ReadState.OK if read else ReadState.UNREADABLE
+                out.append(_entry(ArtifactKind.LIVE_PROGRESS, progress, state))
+            fetch = live / "fetch.json"
+            if fetch.exists():
+                out.append(_entry(ArtifactKind.LIVE_FETCH, fetch))
+            for row in snapshot.findings:
+                if row.source is Source.LIVE and row.input_path is not None:
+                    out.append(_entry(ArtifactKind.CASE_FOLDER, row.input_path.parent,
+                                      case_id=row.case_id))  # fmt: skip
+                    out.append(_entry(ArtifactKind.INPUT_TAR, row.input_path,
+                                      tar_sha256=row.tar_sha256, case_id=row.case_id))  # fmt: skip
+        out += [
+            _entry(ArtifactKind.RUNTIME_RECORD, path)
+            for path in _globbed(ref.root / RUNTIME_DIR, f"{run_id}-*.json")
+        ]
+        if snapshot.launcher_log is not None:
+            out.append(_entry(ArtifactKind.LAUNCHER_LOG, snapshot.launcher_log))
+    elif ref.kind is RunKind.VERIFY:
+        state = summary.read_state if summary is not None else None
+        out.append(_entry(ArtifactKind.RESULT, ref.root / RESULT_FILE, state))
+        summary_md = ref.root.parent / "summary.md"
+        if summary_md.exists():
+            out.append(_entry(ArtifactKind.SUMMARY, summary_md))
+    if summary is not None and summary.integrity is not None:
+        for case_id, sha, path in summary.integrity.inputs:
+            out.append(_entry(ArtifactKind.INPUT_TAR, path, tar_sha256=sha, case_id=case_id))
+    for record in snapshot.replays:
+        out.append(_entry(ArtifactKind.REPLAY, record.path, record.read_state))
+        out += [
+            _entry(ArtifactKind.REPLAY_EVIDENCE, path)
+            for path in _globbed(record.path.parent / "evidence", "*")
+            if path.is_file()
+        ]
+    return tuple(out)
+
+
+__all__ = [
+    "ArtifactEntry",
+    "ArtifactKind",
+    "list_artifacts",
+    "LIVE_PULL_INTERVAL_SECONDS",
+    "CaseComparison",
+    "CaseRow",
+    "FindingClass",
+    "Integrity",
+    "Judgment",
+    "ReadState",
+    "ReplayConclusion",
+    "ReplayRecord",
+    "ReplayRound",
+    "RunKind",
+    "RunListing",
+    "RunOutcome",
+    "RunProgress",
+    "RunRef",
+    "RunSnapshot",
+    "RunSummary",
+    "Source",
+    "Termination",
+    "Verdict",
+    "compare_results",
+    "default_roots",
+    "discover_runs",
+    "outcome_from_exit_code",
+    "read_replay",
+    "read_result",
+    "read_run",
+    "read_verify",
+    "recheck_inputs",
+]

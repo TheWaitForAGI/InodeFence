@@ -34,17 +34,16 @@ from __future__ import annotations
 
 import argparse
 import os
-import shutil
-import subprocess
 import sys
+import time
 from pathlib import Path
 
+from inodefence.app.doctor import looks_cloud_synced, relative_output_base
 from inodefence.locate import (
     EXPLORE_DRIVER,
     REPLAY_DRIVER,
     VERIFY_DRIVER,
     RepositoryCodeMissing,
-    check_repository_code,
     repo_not_found_message,
     repo_root,
     run_driver,
@@ -91,382 +90,24 @@ def cmd_targets(args: argparse.Namespace) -> int:
 
         print(json.dumps(support, indent=2, sort_keys=True))
         return 0
-    header = (
-        f"{'target':16} {'regression':11} {'auto-prepare':13} {'explore':8} {'replay':7} "
-        "target options"
+    from inodefence.app.targets import TABLE_HEADER, TABLE_NOTE, table_rows
+    from inodefence.ui.console import Console
+
+    Console(version=_package_version()).targets(
+        table_rows(support), TABLE_HEADER, TABLE_NOTE, support
     )
-    print(header)
-    print("-" * len(header))
-    for name, feats in support.items():
-        explore = "yes" if feats["explore"] else f"no ({feats['explore_reason']})"
-        opts = feats.get("options") or []
-        names = ", ".join(f"--{o['name']}" + ("" if o["required"] else "?") for o in opts) or "—"
-        regression = "yes" if feats.get("regression", True) else "no"
-        prepare = "yes" if feats.get("auto_prepare", True) else "no"
-        replay = "yes" if feats.get("replay") else "no"
-        print(f"{name:16} {regression:11} {prepare:13} {explore:8} {replay:7} {names}")
-    print("\ntarget options: a trailing '?' marks optional. Pass them to `verify` / `explore`.")
     return 0
 
 
-def _check(label: str, status: str, detail: str) -> str:
-    """Print one doctor line. ``status``: OK, FAIL, WARN (not needed for every command), UNKNOWN."""
-    print(f"[{status}] {label}: {detail}")
-    return status
-
-
-def _docker_server() -> tuple[str, str]:
-    """Ask the daemon for its version the way the drivers do (``docker info``, default context).
-
-    Returns (status, detail): OK with the server version, FAIL with the reason and fix, or UNKNOWN
-    when the question could not be answered (timeout), which is not reported as a pass.
-    """
-    try:
-        done = subprocess.run(
-            ["docker", "info", "--format", "{{.ServerVersion}}"],
-            capture_output=True,
-            text=True,
-            timeout=DOCKER_TIMEOUT_SECONDS,
-        )
-    except subprocess.TimeoutExpired:
-        return "UNKNOWN", f"`docker info` did not answer in {DOCKER_TIMEOUT_SECONDS}s"
-    except OSError as error:
-        return "FAIL", f"could not run docker ({error})"
-    if done.returncode == 0 and done.stdout.strip():
-        return "OK", f"server {done.stdout.strip()}"
-    message = (done.stderr or done.stdout).strip().splitlines()
-    first = message[0] if message else f"exit {done.returncode}"
-    if "permission denied" in first.lower():
-        return "FAIL", (
-            f"{first}; your user may not use the Docker daemon (Linux: add it to the docker group "
-            "and log in again)"
-        )
-    return "FAIL", f"{first}; start Docker (Docker Desktop, or `sudo service docker start`)"
-
-
-def _local_images() -> list[str] | None:
-    """Locally present ``inodefence-*`` images (read-only lookup), or None if docker cannot say."""
-    try:
-        done = subprocess.run(
-            ["docker", "images", "--format", "{{.Repository}}:{{.Tag}}"],
-            capture_output=True,
-            text=True,
-            timeout=DOCKER_TIMEOUT_SECONDS,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return None
-    if done.returncode != 0:
-        return None
-    return sorted(
-        {line for line in done.stdout.split() if line.split("/")[-1].startswith("inodefence-")}
-    )
-
-
-#: Folder names of common sync clients; a name match is a guess, reported as WARN, never as OK/FAIL.
-_SYNCED_FOLDER_NAMES = (
-    "google drive",
-    "googledrive",
-    "my drive",
-    "내 드라이브",
-    "onedrive",
-    "dropbox",
-)
-
-
-#: Whole folder names that are typical sync mount points (e.g. ``~/Drive``), matched exactly.
-_SYNCED_MOUNT_NAMES = ("drive", "gdrive")
-
-
-def _looks_cloud_synced(path: Path) -> str | None:
-    for part in path.parts:
-        lowered = part.lower()
-        if lowered in _SYNCED_MOUNT_NAMES:
-            return part
-        for name in _SYNCED_FOLDER_NAMES:
-            if name in lowered:
-                return part
-    return None
-
-
-def _relative_output_base(config: UserConfig) -> str | None:
-    """Why the configured output base cannot be used, or None (one wording: doctor and commands).
-
-    A relative ``INODEFENCE_OUTPUT_DIR`` would move the default ``--out`` with the working
-    directory, so it is refused rather than resolved (an explicit ``--out`` may be relative).
-    """
-    base = config.output_base
-    if Path(base.value).is_absolute():
-        return None
-    return (
-        f"INODEFENCE_OUTPUT_DIR={base.value} ({base.source}) is not absolute; set it to an "
-        "absolute path (a relative one would move with the working directory)"
-    )
-
-
-def _output_base_check(config: UserConfig, root: Path | None) -> str:
-    base = config.output_base
-    path = Path(base.value)
-    label = f"output folder base ({base.source})"
-    relative = _relative_output_base(config)
-    if relative:
-        return _check(label, "FAIL", relative)
-    if root is not None and path.resolve().is_relative_to(root.resolve()):
-        return _check(
-            label, "FAIL", f"{path} is inside the repository {root}; outputs must be outside it"
-        )
-    existing = path
-    while not existing.exists() and existing != existing.parent:
-        existing = existing.parent
-    if not existing.is_dir():
-        return _check(label, "FAIL", f"{path}: {existing} exists and is not a folder")
-    if not os.access(existing, os.W_OK):
-        return _check(label, "FAIL", f"{path}: {existing} is not writable by you")
-    synced = _looks_cloud_synced(path.resolve())
-    if synced:
-        return _check(
-            label,
-            "WARN",
-            f"{path} looks like a cloud-synced folder ({synced!r} in the path); violating inputs "
-            "should not be uploaded. Set INODEFENCE_OUTPUT_DIR to a local folder. "
-            "(name-based guess only; a synced folder with another name is not detected)",
-        )
-    return _check(
-        label,
-        "OK",
-        f"{path} (default --out: {config.default_out(VERIFY_OUT_NAME)}, "
-        f"{config.default_out(EXPLORE_OUT_NAME)})",
-    )
-
-
-def _docker_checks() -> list[str]:
-    docker = shutil.which("docker")
-    statuses = [
-        _check(
-            "Docker CLI",
-            "OK" if docker else "FAIL",
-            f"{docker}" if docker else "docker not on PATH; targets run in Docker on the host",
-        )
-    ]
-    if not docker:
-        statuses.append(_check("Docker daemon access", "UNKNOWN", "no docker CLI to ask"))
-        return statuses
-    status, detail = _docker_server()
-    statuses.append(_check("Docker daemon access", status, detail))
-    images = _local_images() if status == "OK" else None
-    if images is None:
-        statuses.append(
-            _check("prepared images", "UNKNOWN", "could not list images (daemon not usable)")
-        )
-        return statuses
-    readiness = (
-        "which target/version each one serves is not checked here; "
-        "`inodefence verify --target T --version V --dry-run` shows reuse/prepare per version "
-        "(read-only), and --auto-prepare builds a missing one"
-    )
-    if images:
-        statuses.append(
-            _check(
-                "prepared images",
-                "OK",
-                f"{len(images)} inodefence-* image(s) present: {', '.join(images)}; {readiness}",
-            )
-        )
-    else:
-        # Not a failure: images are built on first use with --auto-prepare.
-        statuses.append(_check("prepared images", "INFO", f"none yet; {readiness}"))
-    return statuses
-
-
-def _find_residue():
-    """Leftover InodeFence containers / volumes (read-only listing; see drivers.runtime.health)."""
-    from inodefence.drivers.runtime import health  # stdlib-only leaf, loaded only by doctor
-
-    return health.find_residue()
-
-
-def _host_checks(config: UserConfig | None, daemon_ok: bool) -> list[str]:
-    """Doctor lines added in 0.3 (PR 3): leftovers, free disk, memory. Nothing is changed.
-
-    A leftover is WARN (reported with the commands a person may run; never removed); a listing
-    Docker did not answer is UNKNOWN. Memory is always UNKNOWN: the Docker Desktop backend's
-    memory (Windows commit limit) is not visible from inside WSL/Linux.
-    """
-    from inodefence.drivers.runtime import health
-
-    statuses = []
-    label = "leftover containers / volumes (read-only; nothing is removed)"
-    if not daemon_ok:
-        statuses.append(_check(label, "UNKNOWN", "not asked (daemon not usable)"))
-    else:
-        residue = _find_residue()
-        if residue.clean:
-            statuses.append(_check(label, "OK", "none labelled or named as InodeFence's"))
-        else:
-            status = "WARN" if residue.containers or residue.volumes else "UNKNOWN"
-            statuses.append(_check(label, status, "; ".join(residue.lines())))
-    if config is not None and _relative_output_base(config):
-        statuses.append(
-            _check("free disk at the output folder base", "UNKNOWN", "not checked (see above)")
-        )
-    elif config is not None:
-        disk = health.disk_free(Path(config.output_base.value))
-        status = "UNKNOWN" if disk.free_bytes is None else "WARN" if disk.low else "OK"
-        statuses.append(_check("free disk at the output folder base", status, disk.detail))
-    memory = health.memory_status()
-    statuses.append(_check("memory headroom for Docker", memory.state, memory.detail))
-    return statuses
-
-
-def _runtime_check() -> str:
-    """Same rule as :func:`inodefence.runtime.open_runtime_directory` (meaning unchanged)."""
-    from inodefence.runtime import RUNTIME_BASE
-
-    runtime = Path(os.environ.get("INODEFENCE_RUNTIME_ROOT", RUNTIME_ROOT_DEFAULT))
-    label = "runtime directory (development only: make check / tests; not used by verify / explore)"
-    if (
-        not runtime.is_absolute()
-        or ".." in runtime.parts
-        or not runtime.is_relative_to(RUNTIME_BASE)
-    ):
-        return _check(
-            label,
-            "FAIL",
-            f"INODEFENCE_RUNTIME_ROOT={runtime} is not allowed: it must be an absolute path within "
-            f"{RUNTIME_BASE} (unset it to use {RUNTIME_BASE})",
-        )
-    if runtime.is_symlink():
-        return _check(label, "FAIL", f"{runtime} is a symlink; the runtime root must not be one")
-    if runtime.is_dir():
-        return _check(label, "OK", str(runtime))
-    return _check(
-        label,
-        "WARN",
-        f"{runtime} missing; for development create it with: "
-        f'sudo mkdir -p {runtime} && sudo chown "$(id -u):$(id -g)" {runtime}',
-    )
-
-
-def _repository_code_problem(root: Path) -> str | None:
-    """The refusal every target command would print for ``root`` (marker-only / old clone)."""
-    try:
-        check_repository_code(root)
-    except RepositoryCodeMissing as error:
-        return str(error)
-    return None
-
-
-def _repository_check(config: UserConfig | None) -> tuple[str, Path | None]:
-    """The repository line: the clone in use, where that choice came from, and why it is refused.
-
-    Same resolution as every target command (:func:`inodefence.locate.repo_root`); this only adds
-    the source (``INODEFENCE_HOME`` from the environment or the config file, else this install's
-    checkout) and the check the commands make before running a driver.
-    """
-    label = "repository (needed by targets / verify / explore / replay)"
-    setting = config.get("INODEFENCE_HOME") if config is not None else None
-    env_home = os.environ.get("INODEFENCE_HOME")
-    if env_home:
-        home, source = env_home, "INODEFENCE_HOME from the environment"
-    elif setting is not None:
-        home, source = setting.value, f"INODEFENCE_HOME from {setting.source}"
-    else:
-        home, source = None, "the checkout this inodefence is installed from"
-    root = repo_root()
-    if root is None:
-        return _check(label, "FAIL", repo_not_found_message()), None
-    problem = _repository_code_problem(root)
-    if problem:
-        return _check(label, "FAIL", f"{root} ({source}): {problem}"), None
-    notes = []
-    if setting is not None and setting.overridden is not None:
-        notes.append(
-            f"the config file's INODEFENCE_HOME={setting.overridden} is overridden by the "
-            "environment"
-        )
-    if home is not None and root.resolve() != _running_code().parents[1].resolve():
-        notes.append("target commands run this clone's code, not the code doctor runs from")
-    status = "OK"
-    if home is not None and not Path(home).expanduser().is_absolute():
-        status = "WARN"
-        notes.append(
-            f"INODEFENCE_HOME={home} is relative, so the clone it names depends on the working "
-            "directory; set an absolute path"
-        )
-    return _check(label, status, "; ".join([f"{root} ({source})", *notes])), root
-
-
-def _running_code() -> Path:
-    """The folder of the ``inodefence`` package this process runs (``.../inodefence``)."""
-    import inodefence
-
-    return Path(inodefence.__file__).resolve().parent
-
-
-def _running_code_check() -> str:
-    """Read-only: where the running ``inodefence`` code comes from (doctor; never changes rc).
-
-    WARN only when ``PYTHONPATH`` is set and the package was loaded from under one of its entries:
-    then the code running is that path's, not the installed one. Nothing is ignored or blocked.
-    """
-    code = _running_code()
-    label = "inodefence code running doctor / status / summary"
-    for entry in filter(None, os.environ.get("PYTHONPATH", "").split(os.pathsep)):
-        base = Path(entry).expanduser().resolve()
-        if code.is_relative_to(base):
-            return _check(
-                label,
-                "WARN",
-                f"{code} is loaded from PYTHONPATH entry {entry}, not from the installed package; "
-                "unset PYTHONPATH if that is not intended",
-            )
-    return _check(label, "INFO", str(code))
-
-
 def cmd_doctor(args: argparse.Namespace) -> int:
-    statuses: list[str] = []
-    version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
-    py_ok = sys.version_info[:2] == (3, 12)
-    statuses.append(
-        _check(
-            "Python 3.12",
-            "OK" if py_ok else "FAIL",
-            version if py_ok else f"found {version}; InodeFence needs 3.12",
-        )
+    from inodefence.app import doctor
+    from inodefence.ui.console import Console
+
+    report = doctor.run(
+        args.user_config, args.user_config_error, details=getattr(args, "details", False)
     )
-
-    config: UserConfig | None = args.user_config
-    if config is None:
-        statuses.append(_check("user config", "FAIL", str(args.user_config_error)))
-    else:
-        detail = (
-            str(config.config_path)
-            if config.config_found
-            else f"{config.config_path} not present (optional; defaults apply)"
-        )
-        statuses.append(_check("user config", "OK", detail))
-
-    status, root = _repository_check(config)
-    statuses.append(status)
-    if config is not None:
-        statuses.append(_output_base_check(config, root))
-
-    docker = _docker_checks()
-    statuses += docker
-    statuses += _host_checks(config, daemon_ok=len(docker) > 1 and docker[1] == "OK")
-
-    _running_code_check()  # INFO/WARN only: not counted (never changes the exit code)
-    statuses.append(_runtime_check())
-
-    failed = "FAIL" in statuses
-    unknown = statuses.count("UNKNOWN")
-    if failed:
-        print("\nsome checks failed (see FAIL lines above)")
-    else:
-        print(
-            "\nno check failed"
-            + (f"; {unknown} UNKNOWN (not verified, see above)" if unknown else "")
-        )
-    return 1 if failed else 0
+    Console(version=_package_version()).doctor(report)
+    return report.exit_code
 
 
 def _forward(driver: str, argv: list[str], command: str) -> int:
@@ -508,7 +149,7 @@ def _resolve_out(args: argparse.Namespace, default_name: str) -> Path | None:
         if config is None:
             print(f"error: no --out given and {args.user_config_error}", file=sys.stderr)
             return None
-        relative = _relative_output_base(config)
+        relative = relative_output_base(config)
         if relative:
             print(f"error: no --out given and {relative}", file=sys.stderr)
             return None
@@ -526,7 +167,7 @@ def _resolve_out(args: argparse.Namespace, default_name: str) -> Path | None:
     if problem is not None:
         print(f"error: {problem}; choose another folder", file=sys.stderr)
         return None
-    synced = _looks_cloud_synced(out.resolve())
+    synced = looks_cloud_synced(out.resolve())
     if synced:
         print(
             f"warning: --out {out} looks like a cloud-synced folder ({synced!r}); results may hold "
@@ -562,7 +203,82 @@ def cmd_verify(args: argparse.Namespace) -> int:
     if out is None:
         return REFUSED
     argv += ["--out", str(out)]
-    return _forward(VERIFY_DRIVER, argv + args.extra, "verify")
+    started = time.time()
+    code = _forward(VERIFY_DRIVER, argv + args.extra, "verify")
+    if not args.dry_run:
+        _verify_screen(out, started)
+    return code
+
+
+def _verify_screen(out: Path, started: float) -> None:
+    """On an interactive terminal with Rich: a result screen per cell this run wrote, after the
+    driver's own lines (which are unchanged). Elsewhere nothing is added, so the output and the
+    exit code are the driver's, byte for byte."""
+    from inodefence.ui.console import Console
+
+    console = Console(version=_package_version())
+    if not console.uses_rich:
+        return
+    from inodefence.app.runs import read_verify
+
+    def written_now(summary: object) -> bool:
+        path = getattr(summary, "result_path", None)
+        try:
+            return path is not None and path.stat().st_mtime >= started - 1
+        except OSError:
+            return False
+
+    console.verify_results([s for s in read_verify(out) if written_now(s)], out)
+
+
+def cmd_tui(args: argparse.Namespace) -> int:
+    """The read-only terminal dashboard (optional ``tui`` extra). 3 when it cannot start."""
+    if args.refresh <= 0:
+        print("error: --refresh must be > 0", file=sys.stderr)
+        return 3
+    if not (sys.stdin.isatty() and sys.stdout.isatty()):
+        print(
+            "error: inodefence tui needs an interactive terminal (stdin and stdout)",
+            file=sys.stderr,
+        )
+        return 3
+    from inodefence.ui.tui import TuiUnavailable, run
+
+    try:
+        return run(extra=args.folders, refresh=args.refresh)
+    except TuiUnavailable as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 3
+
+
+def cmd_dashboard(args: argparse.Namespace) -> int:
+    """The local read-only web dashboard (optional ``web`` extra). 0 when stopped (Ctrl-C),
+    3 when it did not start (no FastAPI/uvicorn, or the server could not start)."""
+    from inodefence.ui.web import WebUnavailable, run
+
+    try:
+        return run(extra=args.folders, repo_root=repo_root(), host=args.host, port=args.port)
+    except WebUnavailable as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 3
+    except SystemExit as stop:  # uvicorn exits when it cannot start (e.g. the port is taken)
+        if stop.code in (0, None):
+            return 0
+        print(
+            f"error: the dashboard did not start on {args.host}:{args.port} "
+            "(is the port already in use? try --port)",
+            file=sys.stderr,
+        )
+        return 3
+
+
+def cmd_compare(args: argparse.Namespace) -> int:
+    from inodefence.app.runs import compare_results, read_result
+    from inodefence.ui.console import Console
+
+    a, b = read_result(args.a), read_result(args.b)
+    Console(version=_package_version()).compare(a, b, compare_results(a, b))
+    return 0 if a.has_values and b.has_values else 2
 
 
 def cmd_explore(args: argparse.Namespace) -> int:
@@ -617,7 +333,36 @@ def cmd_replay(args: argparse.Namespace) -> int:
         argv.append("--dry-run")
     if args.additive_detectors:  # nothing forwarded without the option
         argv.append("--additive-detectors")
-    return _forward(REPLAY_DRIVER, argv, "replay")
+    started = time.time()
+    code = _forward(REPLAY_DRIVER, argv, "replay")
+    if not args.dry_run:
+        _replay_screen(args.case_dir.expanduser().resolve(), started)
+    return code
+
+
+def _replay_screen(case_dir: Path, started: float) -> None:
+    """On an interactive Rich terminal: the replay record(s) this run wrote, after the driver's
+    unchanged lines (``<case>.replay-<UTC>/replay.json`` beside the case folder, or inside a
+    result folder for ``--case``). Elsewhere nothing is added."""
+    from inodefence.ui.console import Console
+
+    console = Console(version=_package_version())
+    if not console.uses_rich:
+        return
+    from inodefence.app.runs import read_replay
+
+    found = {
+        *case_dir.parent.glob(f"{case_dir.name}.replay-*/replay.json"),
+        *case_dir.glob("**/*.replay-*/replay.json"),
+    }
+
+    def written_now(path: Path) -> bool:
+        try:
+            return path.stat().st_mtime >= started - 1
+        except OSError:
+            return False
+
+    console.replay_results([read_replay(p) for p in sorted(found) if written_now(p)])
 
 
 def cmd_status(args: argparse.Namespace) -> int:
@@ -637,10 +382,16 @@ def cmd_status(args: argparse.Namespace) -> int:
         and nested.is_dir()
     ):
         folder = nested
+    from inodefence.ui.console import Console
+
+    console = None if args.plain else Console(version=_package_version())
+    rich = console is not None and console.uses_rich
+    rows: list[dict[str, object]] = []  # the Rich screen's rows (the same values as the lines)
     # A running (or finished) exploration's live folder: progress snapshot + violation cases.
     live = live_dirs_status(folder)
-    for block in live:
-        print(block)
+    if not rich:
+        for block in live:
+            print(block)
     results = (
         [folder / "result.json"]
         if (folder / "result.json").is_file()
@@ -648,6 +399,8 @@ def cmd_status(args: argparse.Namespace) -> int:
     )
     if not results:
         if live:
+            if rich and console is not None:
+                console.status(folder, live, rows)
             return 0  # still running (or stopped before writing result.json): live view only
         print(
             f"no result.json and no live progress under {folder}. A running exploration writes "
@@ -662,6 +415,10 @@ def cmd_status(args: argparse.Namespace) -> int:
         except (TargetResultError, OSError, ValueError) as error:
             print(f"{result_path}: unreadable ({error})", file=sys.stderr)
             unreadable += 1
+            # not a verdict: the file could not be read (ERROR is a verdict a result can hold)
+            rows.append(
+                {"cell": result_path.parent.name, "verdict": "UNREADABLE", "error": str(error)}
+            )
             continue
         line = f"{result_path.parent.name}: {result.verdict.value} target={result.target}"
         if result.axes.target_version:
@@ -673,12 +430,31 @@ def cmd_status(args: argparse.Namespace) -> int:
                 line += f" first-violation={campaign.runs_to_first_violation}"
             if campaign.stopped_early:
                 line += " (stopped early)"
-        print(line)
         # Same wording as summary.md, the explore output line and the live view (one function);
         # for exploration results only, as in the summary. Verdict and exit code are unchanged.
         warning = no_extraction_warning(result.termination_counts) if campaign else None
+        if rich:
+            rows.append(
+                {
+                    "cell": result_path.parent.name,
+                    "verdict": result.verdict.value,
+                    "target": result.target,
+                    "version": result.axes.target_version,
+                    "runs": result.executed,
+                    "violations": len(result.violating_cases),
+                    "first": campaign.runs_to_first_violation if campaign else None,
+                    "explore": campaign is not None,
+                    "stopped_early": bool(campaign and campaign.stopped_early),
+                    "warning": warning,
+                    "path": str(result_path),
+                }
+            )
+            continue
+        print(line)
         if warning:
             print(f"  ** {warning} **")
+    if rich and console is not None:
+        console.status(folder, live, rows)
     return 2 if unreadable else 0  # a result that could not be read is not a clean status
 
 
@@ -692,6 +468,13 @@ def cmd_summary(args: argparse.Namespace) -> int:
         print(f"error: {error}", file=sys.stderr)
         return 2
     if args.output is None:
+        if not args.plain:
+            from inodefence.ui.console import Console
+
+            console = Console(version=_package_version())
+            if console.uses_rich:
+                console.markdown(text)  # the same Markdown, drawn; pipes and -o get the text
+                return 0
         sys.stdout.write(text)
     else:
         try:
@@ -766,6 +549,11 @@ def build_parser() -> argparse.ArgumentParser:
         "doctor",
         help="check the environment and say how to fix problems",
         epilog="exit codes: 0 no check failed (UNKNOWN lines are not failures), 1 a check failed.",
+    )
+    doctor.add_argument(
+        "--details",
+        action="store_true",
+        help="also list every image and leftover by name, with how to remove a leftover",
     )
     doctor.set_defaults(func=cmd_doctor)
 
@@ -901,6 +689,11 @@ def build_parser() -> argparse.ArgumentParser:
     status.add_argument(
         "folder", type=Path, help="an exploration output folder (live/ and/or result.json)"
     )
+    status.add_argument(
+        "--plain",
+        action="store_true",
+        help="the plain lines even on an interactive terminal (pipes always get them)",
+    )
     status.set_defaults(func=cmd_status)
 
     summary = sub.add_parser(
@@ -911,11 +704,50 @@ def build_parser() -> argparse.ArgumentParser:
     summary.add_argument("result", type=Path, help="a result.json")
     summary.add_argument("-o", "--output", type=Path, help="write to this file (else stdout)")
     summary.add_argument(
+        "--plain",
+        action="store_true",
+        help="print the Markdown text even on an interactive terminal (pipes and -o always do)",
+    )
+    summary.add_argument(
         "--no-verify-inputs",
         action="store_true",
         help="skip re-hashing the saved input TARs (the summary records that it was skipped)",
     )
     summary.set_defaults(func=cmd_summary)
+
+    compare = sub.add_parser(
+        "compare",
+        help="compare two results case by case: same input (SHA-256) and each verdict",
+        epilog="exit codes: 0 shown, 2 a result could not be read, or a usage error.",
+    )
+    compare.add_argument("a", type=Path, help="a result.json (shown as A)")
+    compare.add_argument("b", type=Path, help="another result.json (shown as B)")
+    compare.set_defaults(func=cmd_compare)
+
+    tui = sub.add_parser(
+        "tui",
+        help="read-only full-screen dashboard of the runs on this host (optional 'tui' extra)",
+        epilog="exit codes: 0 quit, 3 not started (no Textual, not an interactive terminal, "
+        "bad --refresh). Reads the default explore/verify output folders plus FOLDER ...; "
+        "starts, stops, deletes and writes nothing.",
+    )
+    tui.add_argument("folders", nargs="*", type=Path, metavar="FOLDER", help="extra folders")
+    tui.add_argument(
+        "--refresh", type=float, default=1.0, help="seconds between re-reads (default 1)"
+    )
+    tui.set_defaults(func=cmd_tui)
+
+    dashboard = sub.add_parser(
+        "dashboard",
+        help="local read-only web dashboard of the runs on this host (optional 'web' extra)",
+        epilog="exit codes: 0 stopped (Ctrl-C), 3 not started (no FastAPI/uvicorn, or the "
+        "server could not start). Serves 127.0.0.1 by default; reads the default output "
+        "folders plus FOLDER ...; starts, stops, deletes and writes nothing.",
+    )
+    dashboard.add_argument("folders", nargs="*", type=Path, metavar="FOLDER", help="extra folders")
+    dashboard.add_argument("--host", default="127.0.0.1", help="address (default 127.0.0.1)")
+    dashboard.add_argument("--port", type=int, default=8765, help="port (default 8765)")
+    dashboard.set_defaults(func=cmd_dashboard)
 
     return parser
 

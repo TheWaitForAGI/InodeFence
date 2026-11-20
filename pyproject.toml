@@ -20,10 +20,25 @@ dependencies = []
 inodefence = "inodefence.cli:main"
 
 [project.optional-dependencies]
+# The command itself needs none of these (dependencies = []). Each interface extra is optional:
+# `ui` draws the terminal with Rich (without it the plain screens are used); `tui` is for
+# `inodefence tui` (Textual); `web` is for `inodefence dashboard` (FastAPI + uvicorn).
+# Each lower bound is the minor of the version actually tested (2026-11-19, the HOST4 review
+# venv): exactly rich 15.0.0, textual 8.2.8, fastapi 0.165.0, uvicorn 0.54.0, httpx 0.28.1.
+# Earlier patch releases of those minors (e.g. textual 8.2.0-8.2.7) were not tested.
+ui = ["rich>=15.0"]
+tui = ["textual>=8.2", "rich>=15.0"]
+web = ["fastapi>=0.165", "uvicorn>=0.54"]
+all = ["rich>=15.0", "textual>=8.2", "fastapi>=0.165", "uvicorn>=0.54"]
 dev = [
     "pytest>=8",
     "ruff>=0.8",
     "pyright>=1.1.400,<2",
+    "rich>=15.0",  # so the Rich renderer is tested too (the plain one is tested with Rich blocked)
+    "textual>=8.2",  # so the TUI tests run in CI instead of skipping
+    "fastapi>=0.165",  # so the web tests run in CI instead of skipping
+    "uvicorn>=0.54",
+    "httpx>=0.28",  # FastAPI's TestClient
 ]
 
 [tool.setuptools.packages.find]
@@ -31,6 +46,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "inodefence.targets" = ["*.cjs"]
+"inodefence.ui.web.static" = ["*.html", "*.css", "*.js"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

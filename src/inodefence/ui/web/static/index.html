@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>InodeFence dashboard</title>
+  <!-- One palette, served from the shared theme module. No external stylesheet, font or script. -->
+  <link rel="stylesheet" href="/theme.css">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <div id="app">
+    <nav id="sidenav" aria-label="Sections">
+      <div class="brand"><span id="brand-ic"></span> InodeFence</div>
+      <ul class="nav-list">
+        <li><a href="#/overview" data-nav="overview">Overview</a></li>
+        <li><a href="#/targets" data-nav="targets">Targets</a></li>
+        <li><a href="#/experiments" data-nav="experiments">Experiments</a></li>
+        <li><a href="#/findings" data-nav="findings">Flagged cases</a></li>
+        <li><a href="#/replay" data-nav="replay">Replay</a></li>
+        <li><a href="#/artifacts" data-nav="artifacts">Artifacts</a></li>
+      </ul>
+      <div class="nav-foot">
+        <span class="ver">engine v<span id="nav-ver">&mdash;</span></span>
+        <div class="ro">read-only &middot; local</div>
+      </div>
+    </nav>
+    <div id="layout">
+      <header id="topbar">
+        <div class="title" id="page-title">Overview</div>
+        <div class="search">
+          <input id="search" type="search" placeholder="Filter runs and flagged cases&hellip;" autocomplete="off" spellcheck="false">
+          <span class="chip chip-sm chip-muted" id="chip-scan" title="Scanned output folders">&mdash; folders</span>
+          <span class="chip chip-sm chip-accent" title="This dashboard is read-only and binds to 127.0.0.1">read-only &middot; local</span>
+        </div>
+        <div class="chips">
+          <span class="chip chip-muted" id="chip-conn" title="Live event stream">&middot; stream</span>
+          <span class="chip chip-muted" id="chip-engine" title="Engine / environment health">&middot; engine</span>
+        </div>
+      </header>
+      <main id="view" aria-live="polite"><!-- rendered by app.js --></main>
+    </div>
+  </div>
+  <script src="/static/app.js" defer></script>
+</body>
+</html>

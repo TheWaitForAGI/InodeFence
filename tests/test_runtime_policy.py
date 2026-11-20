@@ -338,11 +338,15 @@ def _imports(path: Path) -> set[str]:
 
 
 def test_the_engine_never_imports_the_runtime_policy() -> None:
+    # The command layer (cli, locate, and its shared app/ and ui/ layers) sits above the engine and
+    # may read the runtime's stdlib leaves (doctor's leftover listing); the engine never does.
     product = {SRC / "cli.py", SRC / "locate.py"}
+    command_layer = (SRC / "app", SRC / "ui")
     offenders = [
         str(path.relative_to(SRC))
         for path in SRC.rglob("*.py")
         if not path.is_relative_to(SRC / "drivers") and path not in product
+        if not any(path.is_relative_to(layer) for layer in command_layer)
         if any(name.startswith("inodefence.drivers.runtime") for name in _imports(path))
     ]
     assert offenders == []

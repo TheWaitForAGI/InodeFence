@@ -20,6 +20,31 @@
   `additive_detectors` 열로 남긴다(수·영역·근거·증거 해시, 경로 없음). 판정(C0/C1/C2·지문)과 실행 조건은 그대로이고,
   옵션이 없으면 입력 줄·라운드·`replay.json`이 전과 같다. 0보다 큰 수는 후보 선별 신호이며 위반 판정이 아니다.
   [USAGE](docs/USAGE.md)
+- `inodefence dashboard [FOLDER ...] [--host] [--port]`: 로컬 읽기 전용 웹 대시보드(기본 127.0.0.1:8765, GET만).
+  페이지는 Overview·Targets·Experiments·Flagged cases·Replay·Artifacts. 선택 설치 `web`이 없거나 서버가 시작하지 못하면
+  한 줄과 종료 3.
+  [USAGE](docs/USAGE.md#웹-대시보드dashboard)
+- 대화형 터미널(선택 설치 `ui`)에서 `status`는 결과 표, `summary`는 마크다운을 그려서 보여 준다. `--plain`, 파이프,
+  `-o`는 지금의 텍스트 그대로다. `explore`의 진행 화면도 같은 디자인(실행 막대, 카드, 종료 상태 막대, 끝의 결과 패널)이고,
+  마지막 진행 줄은 그대로 마지막에 남는다.
+- `inodefence tui [FOLDER ...] [--refresh 초]`: 이 호스트의 실행 폴더를 읽기 전용으로 보는 터미널 대시보드
+  (Overview·Targets·Campaigns·Flagged cases·Artifacts 탭). 선택 설치 `tui`가 없거나 대화형 터미널이 아니면 한 줄과
+  종료 3. [USAGE](docs/USAGE.md#터미널-대시보드tui)
+- `inodefence compare A B`: 두 결과를 케이스별로 나란히 보여 준다. 양쪽에 기록된 입력 SHA-256이 같을 때만
+  "same", 엄격한 읽기가 거절한 결과는 "as stored"와 이유를 붙인다. `verify`·`replay`는 대화형 터미널에서만 드라이버의
+  줄 뒤에 이 실행이 쓴 결과의 화면을 덧붙이고, 파이프·파일 출력은 그대로다. [USAGE](docs/USAGE.md#두-결과-대조compare)
+- 화면용 선택 설치 `ui`(Rich)·`tui`(Textual)·`web`(FastAPI·uvicorn)·`all`. 하한은 시험한 버전의 minor다(시험한 정확한 버전:
+  rich 15.0.0, textual 8.2.8, fastapi 0.165.0, uvicorn 0.54.0). `ui`가 있으면 `doctor`·`targets`를
+  터미널에서 Rich로 그린다(테두리 없는 표, 상태에만 색). 파이프·파일·`NO_COLOR`·`TERM=dumb`·Rich 없음에서는 지금의
+  화면 그대로이고, `targets --json`·`result.json`·`summary` 마크다운은 Rich 유무와 관계없이 같은 바이트다. 기본 설치의
+  의존성은 여전히 없다. [USAGE](docs/USAGE.md#설치)
+- `inodefence doctor`의 화면을 열로 맞췄다(상태·항목 이름·값). 긴 값은 같은 열에서 다음 줄로 이어지고, 다음에 할 일은
+  `→`로 시작하는 다음 줄에 있다. 이미지와 남은 컨테이너·볼륨은 기본 화면에서 개수와 대상별 묶음만 보이고, 전체 이름과
+  제거 안내는 새 옵션 `inodefence doctor --details`에 있다. 상태 표시는 터미널에서만 색이 들어간다(`NO_COLOR`가 있으면
+  끔, 파이프·파일은 색 코드 없음). `FAIL`·`WARN` 항목은 다음에 할 일을 기본 화면의 `→` 줄로 보여 준다. 판정과 종료
+  코드는 그대로다. 항목 이름을 짧게 바꿨다: `repository`, `output folder`, `leftover from old runs`, `free disk`,
+  `Docker memory`, `inodefence code`, `runtime dir (dev only)`(떼어 낸 설명은 `--details`). 터미널 문구는 호환 약속
+  밖이다. [USAGE](docs/USAGE.md)
 
 ### 변경된 동작과 호환성
 - 탐색 드라이버(네 대상 모두)가 호출자 환경의 `DEMO_MUTATION_POLICY`를 런처에 넘기지 않는다. 전에는 node-tar와

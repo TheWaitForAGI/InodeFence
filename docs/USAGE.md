@@ -21,6 +21,25 @@ inodefence doctor           # 무엇이 준비됐고 무엇이 빠졌는지, 고
 inodefence targets          # 추출기와 각 추출기가 지원하는 것(옵션·탐색) 표
 ```
 
+화면을 더 보기 좋게 하는 선택 설치(명령의 동작·종료 코드·기계 출력은 같습니다):
+
+| 선택 | 설치 | 패키지(하한) | 더해지는 것 |
+| --- | --- | --- | --- |
+| `ui` | `pip install -e '.[ui]'` | rich>=15.0 | 터미널 화면을 Rich로 그립니다(`doctor`·`targets`·`compare`·`status`·`summary`, `verify`·`replay` 뒤 결과 화면, `explore` 진행 표시). 없으면 지금의 표준 라이브러리 화면입니다 |
+| `tui` | `pip install -e '.[tui]'` | textual>=8.2, rich>=15.0 | 터미널 대시보드 `inodefence tui`(Textual). 아래 [터미널 대시보드](#터미널-대시보드tui) |
+| `web` | `pip install -e '.[web]'` | fastapi>=0.165, uvicorn>=0.54 | 로컬 웹 대시보드 `inodefence dashboard`(FastAPI·uvicorn). 아래 [웹 대시보드](#웹-대시보드dashboard) |
+| `all` | `pip install -e '.[all]'` | 위 넷 | 위의 것 전부 |
+
+하한은 시험한 버전의 minor입니다. 시험한 정확한 버전은 rich 15.0.0, textual 8.2.8, fastapi 0.165.0, uvicorn 0.54.0,
+테스트용 httpx 0.28.1입니다(2026-11-19). 같은 minor의 더 이른 패치(예: textual 8.2.0–8.2.7)와 그보다 낮은 버전은
+시험하지 않았습니다.
+
+Rich는 stdout이 터미널이고 `NO_COLOR`가 없으며 `TERM`이 `dumb`가 아닐 때만 씁니다. 파이프·파일·`NO_COLOR`에서는
+Rich가 설치돼 있어도 표준 라이브러리 화면과 같은 글자가 나가고 색 코드는 없습니다. `targets --json`, `result.json`,
+`summary`의 마크다운은 Rich를 거치지 않으므로 Rich 유무와 관계없이 같은 바이트입니다.
+대화형 터미널에서 `status`는 결과 표로, `summary`는 같은 마크다운을 그려서 보여 줍니다. 원래의 줄·마크다운 텍스트가
+필요하면 `--plain`을 붙이거나 파이프·`-o`로 받으세요(그때는 Rich 유무와 관계없이 같은 바이트).
+
 설치 후에는 저장소 밖 어느 폴더에서 실행해도 됩니다. 설치 방식에 따라 되는 명령이 다릅니다
 (2026-11-16, Python 3.12 깨끗한 venv·저장소 밖 폴더·빈 환경에서 확인, 후속 작업 커밋 e71a534에서 다시 확인):
 
@@ -47,8 +66,44 @@ wheel로 설치했다면 `INODEFENCE_HOME`(환경 변수 또는 아래 설정 �
 고른 clone에 `src/inodefence/__init__.py`와 `src/inodefence/drivers/`가 둘 다 있어야 합니다. 하나라도 없으면(손상된 clone, 또는 `src/inodefence`는 있지만 `drivers/`가 없는 이 버전 이전 레이아웃의 clone) 다른 설치본으로 대신 돌리지 않고 종료 3으로 거부하며, 그 clone을 갱신(`git pull`)하거나 `INODEFENCE_HOME`을 최신 clone으로 바꾸라고 안내합니다.
 
 `doctor`는 각 항목을 `OK`·`FAIL`·`WARN`·`INFO`·`UNKNOWN`으로 출력합니다. 확인하지 못한 것은 `OK`가
-아니라 `UNKNOWN`입니다. 로컬 `inodefence-*` 이미지는 있으면 `OK`로 이름을 나열하고, 없으면 `INFO`
-(처음 쓸 때 `--auto-prepare`로 빌드)입니다. 다만 어느 이미지가 어느 대상·버전용으로 바로 쓸 수 있는지는
+아니라 `UNKNOWN`입니다.
+
+화면은 열로 맞춥니다. 상태, 항목 이름, 값이 각자 열에 있고, 값이 길면 같은 열에서 다음 줄로 이어집니다.
+다음에 할 일은 항목 줄에 붙이지 않고 `→`로 시작하는 다음 줄에 씁니다. `FAIL`·`WARN`인 항목은 무엇이 문제이고
+다음에 무엇을 하면 되는지를 기본 화면에 `→` 줄로 보여 줍니다. `--details`로 미루는 것은 긴 목록과 긴 배경
+설명뿐입니다.
+
+항목 이름은 짧습니다. 떼어 낸 설명은 `--details`에 있습니다.
+
+| 항목 이름 | 0.2.0의 이름 | `--details`에만 있는 것 |
+| --- | --- | --- |
+| `repository` | `repository (needed by targets / verify / explore / replay)` | 쓰는 명령 |
+| `output folder` | `output folder base (<출처>)` | — (출처는 값에 있습니다) |
+| `leftover from old runs` | `leftover containers / volumes (read-only; nothing is removed)` | 이름과 제거 안내 |
+| `free disk` | `free disk at the output folder base` | — |
+| `Docker memory` | `memory headroom for Docker` | 확인하지 못하는 이유(기본 화면은 `not checked on this host`) |
+| `inodefence code` | `inodefence code running doctor / status / summary` | 무엇을 가리키는지 |
+| `runtime dir (dev only)` | `runtime directory (development only: make check / tests; not used by verify / explore)` | 쓰는 곳 |
+
+- **폭:** 터미널이면 터미널 폭에 맞춰 접습니다. 파이프나 파일로 보내면 100칸입니다.
+- **색:** 상태 표시만 칠합니다(`OK` 초록, `WARN` 노랑, `FAIL` 빨강, `UNKNOWN`·`INFO` 흐리게). stdout이 터미널일 때만 칠하고, 환경 변수 `NO_COLOR`가 있으면 끕니다. 파이프나 파일에는 색 코드가 나가지 않습니다.
+- **긴 목록:** 기본 화면은 개수와 묶음만 보여 줍니다.
+  - 로컬 `inodefence-*` 이미지가 있으면 `OK`와 함께 개수, 그리고 대상별 개수(`node-tar`·`decompress`·`oras-go`·`python-tarfile`·그 밖)를 보여 줍니다. 대상은 이미지 이름으로만 나눕니다.
+  - 이미지가 없으면 `INFO`입니다(처음 쓸 때 `--auto-prepare`로 빌드).
+  - 남은 컨테이너·볼륨은 개수만 보여 줍니다.
+  - 전체 이름(한 줄에 하나)과 긴 안내는 `inodefence doctor --details`에 있습니다.
+
+```text
+[OK]      prepared images         71 inodefence-* image(s) present
+                                  node-tar 39 · decompress 10 · oras-go 13 · python-tarfile 1
+                                  other 8
+                                  → full list: inodefence doctor --details
+[WARN]    leftover from old runs  11 containers, 11 volumes (nothing was removed)
+                                  → names and how to remove: inodefence doctor --details
+```
+
+(가짜 입력으로 찍은 예입니다.) 판정(`OK`·`WARN`·`FAIL`·`UNKNOWN`·`INFO`)과 종료 코드는 화면 모양과 무관합니다.
+`--details`도 판정을 바꾸지 않습니다. 어느 이미지가 어느 대상·버전용으로 바로 쓸 수 있는지는
 `doctor`가 판단하지 않고, `inodefence verify --target node-tar --version 7.5.2 --dry-run`(읽기 전용)이
 셀마다 재사용/준비 계획을 보여 줍니다. 이미지가 없으면 `--auto-prepare`를 줄 때만 Docker로 빌드합니다
 (네트워크 필요). `explore`는 실제 실행에 `--auto-prepare`가 필수이고(없으면 아무것도 실행하지 않고 이유를
@@ -56,15 +111,16 @@ wheel로 설치했다면 `INODEFENCE_HOME`(환경 변수 또는 아래 설정 �
 테스트용 개발 전제라 `doctor`에서 없으면 `WARN`이고, `/var/lib/inodefence` 밖이나 symlink로 설정돼 있으면
 `FAIL`입니다(그 규칙은 바뀌지 않았습니다).
 
-`doctor`는 Docker 점검 줄 바로 뒤, 마지막 `runtime directory` 줄 앞에 세 줄을 더 출력합니다. 모두 읽기만 하며 아무것도 바꾸거나 지우지 않습니다.
+`doctor`는 Docker 점검 줄 바로 뒤, 마지막 `runtime dir (dev only)` 줄 앞에 세 줄을 더 출력합니다. 모두 읽기만 하며 아무것도 바꾸거나 지우지 않습니다.
 
 - **남은 컨테이너·볼륨:** InodeFence 소유 라벨(`org.inodefence.smoke-owner`·`org.inodefence.execution-owner`)이
   붙었거나 이름이 런처의 컨트롤러·볼륨 이름(`inodefence-local-controller`, `inodefence-decompress-controller`,
-  `inodefence-oras-go-runtime` 등)인 것을 조회합니다. 있으면 `WARN`과 함께 확인 명령
-  (`docker container inspect <이름>`)과, 내 것이고 쓰는 실행이 없을 때만 쓸 제거 명령을 보여 줍니다. 도구가
-  직접 지우지는 않습니다. Docker가 답하지 않으면 `UNKNOWN`입니다(정리됐다고 보지 않습니다).
+  `inodefence-oras-go-runtime` 등)인 것을 조회합니다. 있으면 기본 화면은 `WARN`(항목 이름 `leftover from old runs`)과
+  개수만 보여 줍니다. `--details`는 이름과 함께 확인 명령(`docker container inspect <이름>`)과, 내 것이고 쓰는
+  실행이 없을 때만 쓸 제거 명령을 보여 줍니다. 도구가 직접 지우지는 않습니다. Docker가 답하지 않으면 `UNKNOWN`입니다(정리됐다고 보지 않습니다).
 - **출력 폴더 디스크 여유:** 2 GiB 미만이면 `WARN`입니다(거부하지 않습니다).
-- **Docker 메모리 여유:** 항상 `UNKNOWN`입니다. Windows + WSL2에서 Docker Desktop backend의 메모리는 Windows
+- **Docker 메모리 여유(`Docker memory`):** 항상 `UNKNOWN`입니다. 기본 화면은 `not checked on this host` 한 줄이고, 아래 이유는
+  `--details`에 있습니다. Windows + WSL2에서 Docker Desktop backend의 메모리는 Windows
   커밋 한도에 걸리는데, WSL 안에서는 그 한도를 볼 수 없습니다(2026-11-16 HOST2 정지 4: WSL 쪽 여유는 충분했지만
   Windows 쪽 가상 메모리 부족과 함께 backend가 사라졌습니다). 이 `UNKNOWN`은 종료 코드에 영향이 없습니다.
 
@@ -89,9 +145,9 @@ wheel로 설치했다면 `INODEFENCE_HOME`(환경 변수 또는 아래 설정 �
   대상 명령이 그 클론의 코드로 돈다고 적습니다. `INODEFENCE_HOME`이 클론이 아니면 그 값과 출처를 적어 `FAIL`,
   클론이지만 실행할 코드(`src/inodefence/drivers/`)가 없으면 대상 명령과 같은 거부 문구로 `FAIL`, 상대 경로면
   (실행한 폴더에 따라 바뀌므로) `WARN`입니다.
-- `output folder base` 줄: 출력 기준 폴더와 출처, 그리고 `verify`·`explore`의 기본 `--out` 두 개. 기준 폴더가
+- `output folder` 줄: 출력 기준 폴더와 출처, 그리고 `verify`·`explore`의 기본 `--out` 두 개. 기준 폴더가
   이미 있는 파일이면 `FAIL`입니다.
-- `inodefence code running doctor / status / summary` 줄(`runtime directory` 줄 바로 앞): 지금 돌고 있는
+- `inodefence code` 줄(`runtime dir (dev only)` 줄 바로 앞): 지금 돌고 있는
   `inodefence` 패키지 폴더(`INFO`). `PYTHONPATH`가 설정돼 있고 패키지가 그 아래에서 읽혔으면, 설치본이 아니라
   그 경로의 코드가 돈다는 `WARN`입니다. 이 줄은 종료 코드에 영향이 없고, `PYTHONPATH`를 무시하거나 막지 않습니다.
 
@@ -233,6 +289,92 @@ node-tar 탐색(`--version 7.5.23 --seed 123 --budget 20`, engineering smoke 202
 
 (`<버전>-<seed>-<budget>` 이름은 node-tar에서 관찰한 것입니다. 다른 대상의 결과 폴더 위치는 [도중 확인](#도중-확인) 절에 실측을 적었습니다.)
 
+## 웹 대시보드(`dashboard`)
+
+```bash
+pip install -e '.[web]'
+inodefence dashboard                    # http://127.0.0.1:8765 (기본 출력 폴더를 읽음)
+inodefence dashboard ~/other-out --port 8800
+```
+
+이 호스트의 실행 폴더를 브라우저에서 보는 **읽기 전용** 대시보드입니다. 기본으로 `127.0.0.1`에만 열립니다(`--host`로
+다른 주소를 주면 경고 한 줄). GET 요청만 받고, 실행을 시작·중지·삭제·재실행하거나 파일을 쓰지 않으며, 저장된 입력
+TAR의 내용은 보내지 않습니다(경로와 기록된 SHA-256만). 값은 `inodefence tui`와 같은 읽기 모델에서 오고 웹에서 다시
+계산하지 않습니다(없는 값은 `?`, 위반은 모두 후보). 페이지는 여섯 개입니다.
+
+| 페이지 | 보이는 것 |
+| --- | --- |
+| Overview | 엔진 상태(`doctor` 요약), 실행 목록, 최근 위반 후보, 실행별 상세(`#/run/<id>`) |
+| Targets | 등록된 대상과 지원 범위, 준비된 이미지 묶음, 대상별 마지막 verify 결과(결과 파일의 수정 시각 기준. 기록된 실행 시각이 아님) |
+| Experiments | 탐색과 verify 실행: 상태 필터(running·stalled·finished·no result), 실행별 진행 막대(실행 수/예산. 시작·끝 시각은 기록되지 않아 시간축은 없음), 행을 고르면 상세(진행, 종료 상태, 후보) |
+| Flagged cases | Oracle이 표시한 케이스(제목 옆 "oracle flags · not confirmed"): 탐색의 위반 후보(C0·C1·C2, 분류, replay 결론)와, 따로, verify의 알려진 픽스처 위반 |
+| Replay | 재실행 기록(판정된 회차 기준의 같은 계약 수와 결론) |
+| Artifacts | 실행 하나의 파일·폴더 목록(메타데이터만; 심볼릭 링크는 따라가지 않고 링크로 표시) |
+
+계약 칸의 표기는 터미널 화면(`verify`·`compare`·`replay`·`tui`)과 같습니다: `V` 위반, `-` 판정됨·위반 아님, `?` 판정되지
+않음 또는 관찰하지 않음. 읽는 폴더는 모든 페이지 위쪽의 폴더 수 칩(마우스를 올리면 경로, `/api/health`의 `roots`)과, 실행이 없을 때의
+`scanned:` 줄에 나옵니다.
+API의 JSON 형식(`/api/…`)은 이 대시보드용이며 호환 약속이 아닙니다.
+
+wheel로만 설치하면(클론 없음, `INODEFENCE_HOME` 없음) 대시보드는 열리지만 Targets 페이지는 대상 목록 대신
+"target registry not readable · no repository root configured"를 보여 줍니다. 대상 목록은 클론에서 읽기 때문이며,
+위 [설치](#설치) 표의 다른 명령과 같은 규칙입니다. 클론에서 설치하거나 `INODEFENCE_HOME=<클론>`을 주세요.
+
+실행 중 표시의 한계: 결과 ID가 아직 없는 탐색은 런처 로그로만 보이고(마지막 쓰기 시각으로 추정한 활동 중 — "launching" — 또는 "no activity"; 수치 없음),
+`--verbose`로(또는 드라이버를 직접) 시작한 python-tarfile·decompress·oras-go 탐색은 런처 로그를 남기지 않으므로 끝날 때까지
+이 화면에 보이지 않습니다. 끝나면 그 결과로 나타납니다.
+
+종료 코드: Ctrl-C로 멈추면 0. FastAPI·uvicorn이 없거나(설치 안내 한 줄) 서버를 시작하지 못하면(포트 사용 중 등, 한 줄)
+3입니다.
+
+## 시연 순서: 여섯 장면을 새 화면으로
+
+소개 영상의 여섯 실행 장면(`paper/deliverables/demo-video-script.md`의 `rec01`~`rec06`)을 지금 CLI로 다시 보는 순서입니다.
+명령은 지금 구문 그대로입니다. 화면은 선택 설치 `ui`(Rich)가 있고 대화형 터미널일 때의 모습이며, 파이프로 받으면
+0.2.0과 같은 글자입니다. 각 장면의 **확인** 줄은 이 안내서를 쓸 때 실제로 본 것만 적습니다. "합성"은 저장된 계약
+픽스처나 합성 진행 값으로 화면만 그려 본 것이고, 실제 추출기를 돌려 본 것이 아닙니다. 아래 결과(판정, 위반 수)는
+실행마다 다를 수 있으며, 여기 적은 화면 구성이 그 값을 보장하지 않습니다.
+
+1. **환경 점검과 대상 목록.** `inodefence doctor`, `inodefence targets`
+   - 화면: 브랜드 머리줄, 상태 카드(OK·WARN·FAIL·UNKNOWN), 구획(Environment·Storage·Docker·Development), 끝의 결과
+     패널과 다음 명령. `targets`는 능력 카드와 대상 표입니다.
+   - 필요한 것: Docker(이미지 칸이 채워지려면 준비된 이미지).
+   - 확인: 실제 호스트의 pty에서 두 명령 모두 종료 0. 화면 구성은 가짜 Docker 응답으로도 확인.
+2. **node-tar 검사와 두 버전 대조.**
+   `inodefence verify --target node-tar --version 7.5.23 --auto-prepare --out out/verify-nt`
+   - 화면: 드라이버의 기존 줄 뒤에 이 실행이 쓴 셀의 결과 화면(판정, 위반 n/m, 케이스 표의 입력 SHA-256과 C0·C1·C2,
+     증거 경로)이 붙습니다.
+   - 두 버전을 나란히 보려면 다른 버전으로 한 번 더 verify한 뒤
+     `inodefence compare <A의 result.json> <B의 result.json>`. 양쪽에 기록된 입력 SHA-256이 같은 케이스만 "same"입니다.
+   - 필요한 것: Docker와 이미지(실제 실행).
+   - 확인: 합성(계약 픽스처와 그 사본). 실제 verify 뒤의 화면은 이 안내서에서 보지 않았습니다.
+3. **탐색.** `inodefence explore --target node-tar --version 7.5.23 --budget 40 --seed 123 --auto-prepare --out out/explore-nt`
+   - 화면: 실행 막대(실행 수/예산), 카드(위반, 미판정, 처리량, 경과), 종료 상태 막대와 C0·C1·C2, ETA(추정)와 런처
+     단계(런처 로그에서 읽음) 한 줄. 끝나면 마지막 화면, 결과 패널, 기존 마지막 줄이 남습니다.
+   - python-tarfile·decompress·oras-go는 실행 중 수치가 없어(`?`) 막대 없이 단계만 보입니다.
+   - 필요한 것: Docker와 이미지(실제 실행, 수 분).
+   - 확인: 합성 진행 값으로 그린 중간·끝 화면. 실제 탐색 중의 화면은 이 안내서에서 보지 않았습니다.
+4. **상태와 요약.** `inodefence status out/explore-nt`,
+   `inodefence summary out/explore-nt/target-explore/<실행>-result/result.json`
+   - 화면: `status`는 판정 카드와 결과 표, `summary`는 같은 마크다운을 그린 것. 원래 글자는 `--plain`.
+   - 필요한 것: 장면 3의 결과 폴더.
+   - 확인: 합성(계약 픽스처로 만든 결과 폴더).
+5. **위반 케이스 재실행.** 탐색 결과의 위반 케이스 폴더 하나를 `inodefence replay <케이스 폴더> --rounds 3`
+   (케이스의 `case.json`에 그 명령이 그대로 있습니다. node-tar 탐색이면 끝 화면의 결과 패널에도 그 실행의
+   케이스 경로가 나옵니다).
+   - 화면: 회차 표, 판정된 회차 가운데 같은 계약의 수(판정되지 않은 회차는 일치로 세지 않음), 결론 칩.
+   - 필요한 것: **탐색이 위반을 찾은 실제 실행.** 저장소에는 결정적으로 위반을 내는 자료가 없고, 영상의 node-tar 탐색은
+     위반이 없었습니다(그래서 영상의 장면 4-3은 거부 화면). 위반 케이스 없이 `replay`를 부르면 실행 전에 거부됩니다.
+   - 확인: 합성 재실행 기록(`tests/app_synthetic.py`). 실제 위반 케이스의 3회 재실행 화면은 보지 않았습니다.
+6. **같은 폴더를 세 화면으로.** 위 폴더들을 한 번에:
+   `inodefence tui out/explore-nt out/verify-nt`, `inodefence dashboard out/explore-nt out/verify-nt`(브라우저에서
+   `http://127.0.0.1:8765`)
+   - 화면: 같은 읽기 계층이라 실행 목록, 후보, 재실행 결론이 CLI와 같은 값입니다.
+   - 필요한 것: 선택 설치 `tui`·`web`, 장면 2~5의 폴더.
+   - 확인: 이 호스트에서 `tui`를 pty로 열어 다섯 탭과 종료 0, `dashboard`를 띄워 페이지·정적 파일·API가 200,
+     포트 충돌 시 종료 3, Ctrl-C에 종료 0. 둘 다 이 호스트의 기본 출력 폴더(실행 없음)로 본 것입니다. 웹 여섯 페이지는
+     검토자(QA)가 열어 페이지 오류가 없음을 확인했습니다(PR #549 코멘트).
+
 ## 실행 중 터미널 진행 표시
 
 `inodefence explore`는 기본으로 진행 줄을 **stderr**에 출력합니다. 숫자는 `inodefence status`와 같은 파일
@@ -263,6 +405,11 @@ inodefence.drivers.run_target_explore`) 옛 `scripts/` 경로로 부르면 기�
   폭에 맞춰 덜 중요한 칸부터 생략). 그 밖(파이프·파일·CI)에는 줄 단위로 출력합니다: 단계가 바뀔 때 즉시, 숫자나 런처 단계가
   바뀌었으면 마지막 줄에서 30초가 지난 뒤, 아무 변화가 없어도 300초마다 한 줄. 색과 이스케이프 문자는 쓰지 않으므로
   `NO_COLOR`와 무관하게 같은 출력입니다.
+- **Rich 화면(`ui` 선택 설치).** stderr가 대화형 터미널이고 Rich가 있으며 `NO_COLOR`가 없으면, 같은 숫자를 제자리
+  갱신되는 화면으로 그립니다: 실행 수 막대(budget 대비), 카드(위반·미판정·처리량·경과), 종료 상태별 막대와 C0/C1/C2,
+  그리고 ETA(추정)·숫자의 시점·런처 단계(런처 로그에서 읽음) 한 줄. 실행 수를 모르면(`?`) 막대를 그리지 않습니다. 끝나면
+  화면을 지우고 결과 패널(판정, 실행 수, 위반은 oracle 후보라는 표시, 다음 명령)을 낸 뒤, 위의 마지막 줄을 **그대로**
+  마지막에 남깁니다.
 - **단계.** `prepare`(이미지 확인·준비) → `running`(런처 실행 중; 탐색 루프 전의 컨트롤러 준비도 포함하며
   `step=`이 런처가 출력한 현재 단계 이름을 보여 줌) → `cleanup`(루프가 끝났거나 보고서가 호스트에 도착, 결과 기록
   중) → `completed` 또는 `aborted`.
@@ -312,6 +459,53 @@ inodefence status ~/inodefence-explore   # 진행 스냅샷 + 위반 케이스 �
 컨트롤러 컨테이너 안에서 돈 탐색은 호스트가 주기적으로 그 폴더를 가져오므로, 실행 중에도
 호스트의 출력 폴더에서 진행과 위반 케이스를 볼 수 있습니다. 가져오기 실패는 탐색을 멈추지 않고
 `fetch.json`에 남습니다.
+
+## 터미널 대시보드(`tui`)
+
+```bash
+pip install -e '.[tui]'
+inodefence tui                           # 기본 출력 폴더(탐색·verify)를 읽습니다
+inodefence tui ~/other-out --refresh 2   # 폴더를 더하고, 2초마다 다시 읽기
+```
+
+`inodefence tui [폴더 ...] [--refresh 초]`는 이 호스트의 실행 폴더를 읽어 한 화면에 보여 주는 **읽기 전용**
+대시보드입니다. 선택 설치 `tui`(Textual 8 이상)가 필요합니다. Textual이 없거나, stdin·stdout이 대화형 터미널이
+아니거나(파이프), `--refresh`가 0 이하이면 시작하지 않고 stderr에 한 줄(Textual이 없을 때는 설치 안내)을 쓰고 종료
+3입니다. `q`로 끝나면 0입니다. 같은 화면을 `python -m inodefence.ui.tui [폴더 ...]`로도 엽니다. 실행을 시작·중지·삭제하거나
+replay를 돌리는 조작은 없고, 아무 파일도 쓰지 않습니다. 기본으로 탐색·verify의 기본 출력 폴더
+(`<출력 기준>/inodefence-explore`, `<출력 기준>/inodefence-target-run`)를 읽고, 인자로 준 폴더를 더 읽습니다.
+심볼릭 링크는 따라가지 않고 저장소 안은 읽지 않습니다. 읽는 위치는 화면(Overview 아래, 도움말)에 그대로 나옵니다.
+
+화면은 다섯 개입니다(숫자 키 1–5).
+
+| 화면 | 보이는 것 |
+| --- | --- |
+| Overview | `doctor` 요약, 등록된 대상 수, 실행 중·갱신 멈춤·끝난 탐색 수, verify 셀 수, 위반 후보 수와 재현 결론별 수, 읽지 못한 폴더 수, 최근 이벤트 |
+| Targets | 등록된 대상, 탐색·replay 지원, 마지막 verify 결과(읽은 결과가 있을 때만) |
+| Campaigns | 탐색 실행(상태, 실행 수/예산, 속도, 위반·미판정 수, 갱신 나이, 숫자의 출처)과 verify 셀 |
+| Flagged cases | 위반 후보(C0·C1·C2, 분류, 종료 상태, replay 결론과 같은 계약 재현 수/판정된 라운드 수, 폴더 위치) |
+| Artifacts | 고른 실행의 `result.json`, 판정, 엔진·이미지 해시, 저장된 입력의 SHA-256과 위치, replay 폴더, 런처 로그 |
+
+실행 중 표시의 한계: 결과 ID가 아직 없는 탐색은 런처 로그로만 보이고(마지막 쓰기 시각으로 추정한 활동 중 — "launching" — 또는 "no activity"; 수치 없음),
+`--verbose`로(또는 드라이버를 직접) 시작한 python-tarfile·decompress·oras-go 탐색은 런처 로그를 남기지 않으므로 끝날 때까지
+이 화면에 보이지 않습니다. 끝나면 그 결과로 나타납니다.
+
+키: `1`–`5` 화면, `↑`/`↓` 행 이동, `Enter` 상세(위반 후보) 또는 그 실행의 Artifacts, `Esc` 닫기, `r` 다시 읽기,
+`?` 도움말, `q` 종료. 화면 아래 줄들은 실행 폴더의 변화를 이벤트로 보여 줍니다.
+
+읽는 법:
+
+- 숫자 자리에 `?`가 나오면 파일이 그 값을 갖고 있지 않다는 뜻이고 0이 아닙니다. 실행 중 수치는 node-tar 탐색만
+  `live/progress.json`에 씁니다. python-tarfile·decompress·oras-go 탐색은 끝날 때까지 수치가 없어 `no live data`와
+  `?`로 보이고, 런처의 현재 단계만 `est.`(추정) 표시와 함께 나옵니다.
+- node-tar의 live 사본은 15초마다 호스트로 옵니다. `running`인데 갱신이 60초 넘게 없으면 `stalled (n분 전)`로
+  보이고 실행 중 수에 넣지 않습니다.
+- 계약 칸은 `V`(위반), `-`(판정됨, 위반 아님), `?`(판정되지 않음 또는 관찰하지 않음 — verify는 C0를 관찰하지 않음)입니다.
+- 위반은 모두 **후보**입니다. 재현은 replay 결론과 `같은 계약 재현 수/판정된 라운드 수`로만 말하며 "확인된 취약점"이라는
+  표시는 없습니다. 판정(PASS·FAIL·ERROR), 종료 상태, 미판정, 하네스 오류는 각각 따로 글자로 보이고 색은 보조입니다.
+- 엄격한 판독기가 거부한 `result.json`(새 버전이 쓴 파일 등)은 `as stored`(검증되지 않음)로 이유와 함께 보입니다.
+  반쯤 쓰인 `result.json`은 오류가 아니라 `result not ready`입니다.
+- 입력 TAR의 내용이나 엔트리 이름은 화면에 펼치지 않습니다. 위치와 SHA-256만 보입니다.
 
 ## 위반 케이스 폴더 읽기
 
@@ -460,15 +654,31 @@ inodefence summary ~/inodefence-explore/target-explore/<실행>-result/result.js
   어휘에 들어가지 않습니다. `benign_control`이 없는 이전 결과 파일도 그대로 읽힙니다.
 - 보고서나 케이스 폴더를 밖으로 보낼 때는 위반 입력이 들어 있다는 점을 기억하세요(아래 책임 있는 공개).
 
+### 두 결과 대조(`compare`)
+
+```bash
+# 두 버전의 verify 결과를 케이스별로 나란히: 같은 입력인지(기록된 SHA-256), 버전별 판정과 C0~C2
+inodefence compare <A의 result.json> <B의 result.json>
+```
+
+케이스 id로 맞춘 뒤, 양쪽에 기록된 입력 SHA-256이 같을 때만 "same"이라고 씁니다. 한쪽에 SHA-256이 없으면
+"unknown", 한쪽에만 있는 케이스는 "only in A/B"입니다. 엄격한 읽기가 거절한 결과는 "as stored"와 이유를 붙여
+저장된 값 그대로 보여 줍니다. 아무것도 실행하지 않고 파일을 다시 쓰지 않습니다. 대화형 터미널에서는 표와 결과
+패널로, 파이프에서는 케이스당 한 줄로 냅니다. `verify`도 대화형 터미널에서는 드라이버의 줄 뒤에 이 실행이 쓴 셀의
+결과 화면(케이스 표, 위반 n/m, 증거 경로)을, `replay`는 이 실행이 쓴 재실행 기록의 화면(회차 표, 판정된 회차 중
+같은 계약 수 — 판정되지 않은 회차는 일치로 세지 않음, 결론)을 덧붙입니다. 파이프·파일로 보낼 때는 아무것도 덧붙이지 않습니다.
+
 ## 종료 코드
 
-| 코드 | `verify`·`explore` | `replay` | `targets` | `doctor` | `status`·`summary` |
+| 코드 | `verify`·`explore` | `replay` | `targets` | `doctor` | `status`·`summary`·`compare` |
 | --- | --- | --- | --- | --- | --- |
-| 0 | PASS | 재실행 완료 | 정상 | FAIL 없음(`UNKNOWN`은 있을 수 있음) | 정상 |
+| 0 | PASS | 재실행 완료 | 정상 | FAIL 없음(`UNKNOWN`은 있을 수 있음) | 정상(`compare`는 두 결과의 판정과 관계없이 보여 주었으면 0) |
 | 1 | FAIL(위반 판정) | 재실행 미완료(끝난 회차는 남음) | — | FAIL 하나 이상 | — |
 | 2 | ERROR 판정. `explore`는 컨트롤러가 시작된 뒤의 중단(런처 비정상 종료, 루프 abort, 루프 보고서 없음)도 2이며 결과를 발행하지 않음(네 대상 공통) | 같은 입력·조건으로 재실행 불가 | 사용법 오류 | 사용법 오류 | 읽기·쓰기 실패 / 사용법 오류 |
 | 3 | 실행 전 거부 — 판정 없음: 사용법 오류(없는 옵션 값, `--budget 0`, decompress·oras-go의 `--mutation-policy` 등), 저장소 안 `--out`, 쓸 수 없는 `--out`(파일이거나 권한 없음), 상대 경로 `INODEFENCE_OUTPUT_DIR`, `--auto-prepare` 없음, 설정 파일 오류, 이미지·준비 문제, Docker가 이미지 질문에 답하지 않음(준비하지 않음), 같은 `--out`에 이 실행의 결과가 이미 있음(덮어쓰지 않음) 등 | 사용법 오류(`--rounds 0` 등), 이미지가 이 호스트에 없음, Docker가 이미지 질문에 답하지 않음, 같은 실행 이름의 컨트롤러·볼륨이 이미 있음, 저장소 안 폴더, 저장소를 못 찾음, 설정 파일 오류 | 저장소를 못 찾음, 설정 파일 오류 | — | — |
 | 4 | — | 이 대상은 재실행 미지원(지금 등록된 네 대상에는 해당 없음) | — | — | — |
+
+`tui`는 0(`q`로 종료), 3(시작하지 않음: Textual 없음, 대화형 터미널 아님, `--refresh`가 0 이하), 사용법 오류 2입니다. `dashboard`는 0(Ctrl-C로 멈춤), 3(시작하지 않음: FastAPI·uvicorn 없음, 서버 기동 실패), 사용법 오류 2입니다.
 
 `verify`·`explore`·`replay`는 종료 코드가 결과를 싣기 때문에 사용법 오류를 2로 내지 않고, 아무것도 실행하지
 않았다는 뜻의 3으로 냅니다(대상 드라이버와 같은 규칙). 판정을 싣지 않는 명령의 사용법 오류와, 하위
@@ -504,6 +714,9 @@ make target-run TARGET=node-tar TARGET_VERSIONS="7.5.2 7.5.3" AUTO_PREPARE=1 PYT
 
 ## 한계와 주의
 
+- **모양이 틀린 `result.json`에서 `status`와 `summary`가 traceback을 낼 수 있습니다.** 예를 들어 `observed_contracts`가
+  수나 null이면 결과 읽기가 정해진 오류 대신 Python 예외를 내고 두 명령이 종료 1로 끝납니다. 이 동작은 이 PR 이전의 `main`과 같으며
+  [#552](https://github.com/TheWaitForAGI/InodeFence/issues/552)에서 다룹니다. 같은 파일에서 `compare`는 멈추지 않습니다.
 - **oras-go 탐색은 입력 이름을 `d/` 아래로 옮겨 보냅니다.** oras-go는 디렉터리 아티팩트를 제목 `d` 아래에 풀고 `d/`
   밖 이름은 추출 전에 거부합니다. 그래서 제품 탐색은 케이스는 그대로 두고, oras-go에 넘기는 TAR에서만 상대 경로 엔트리
   이름 앞에 `d/`를 붙입니다(절대 경로, 하드링크 대상, 심볼릭 링크 대상은 그대로). 판정의 추출 영역은 여전히 추출

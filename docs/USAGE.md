@@ -337,7 +337,8 @@ wheel로만 설치하면(클론 없음, `INODEFENCE_HOME` 없음) 대시보드�
 
 TUI의 실행 기능은 테스트(`tests/test_tui_run.py`)와 개발 중 스크린숏에서 가짜 `inodefence`(실제 Docker 없음)로 확인했고, 검토자(QA)가 이 호스트의 Docker에서 **TUI로 실제 실행을 시작해** 확인했습니다(2026-11-20): node-tar `latest`(7.5.23으로
 해석)의 verify·explore와 7.5.2의 verify·explore. TUI가 띄운 실행의 `result.json`은 CLI로 띄운 것과 시각·경로 필드를 빼면
-같았습니다. `--auto-prepare` 없이 준비되지 않은 이미지로 시작하면 CLI가 종료 3으로 거부하고 Docker 실행은 없었습니다.
+같았습니다(7.5.2의 verify·explore에서 대조). explore는 `--auto-prepare`(또는 `--dry-run`) 없이 시작하면 이미지가 준비돼
+있어도 CLI가 종료 3으로 거부하고 Docker 실행은 없었습니다.
 replay는 위반 후보가 없어 실제로 돌리지 않았습니다(가짜 `inodefence`로만 확인).
 
 1. **환경 점검과 대상 목록.** `inodefence doctor`, `inodefence targets`

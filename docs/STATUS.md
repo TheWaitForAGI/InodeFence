@@ -52,6 +52,9 @@ inferred(추론)를 구분하고, synthetic은 native 증거로 승격하지 않
   시간 제한과 정리 실패 처리(3)를 구현·시험했고, 실제 위반 `replay` 기록(4)은 정정된 문구 기준으로 decompress에서 했으며(demo run;
   node-tar·oras-go는 탐색 200회에서 위반 케이스 없음), 두 번째 호스트 확인(6)은 맥북의 Ubuntu arm64 VM에서 했다(demo run, 지웅 판정).
   0.2.0은 태그 `v0.2.0`(커밋 `ba6fa6f`, 2026-11-18)과 GitHub Release로 릴리스됐다. 남은 일은 [BACKLOG PRODUCT 절](BACKLOG.md).
+- **후속 연구.** 후속 연구 실행 종료(2026-11-19), 동결은 #548·#535·두 번째 엔진 PR 병합 뒤 그 문서 끝에 기록한다.
+  일단락 문서는 Drive `Research/00-운영(역할·규칙·주간 요약)/20261119-후속연구-일단락-동결.md`(2026-11-19 20:20 KST 판,
+  sha256 `02903f9f…`)이고, 끝난 기록과 실행하지 않은 항목은 그 문서와 주장 목록이 기준이다.
 - **제출물.** 결과보고서와 소개 영상의 일정과 상태는 [BACKLOG](BACKLOG.md), 초안은 `paper/deliverables/`에 있다.
 - **이전 상세.** 2026-11-17 이전의 단계별 판정, evidence 경계, 수술 기준·실험 순서·게이트 표, 문서 모순 목록은
   [archive/status-detail-20261117](archive/status-detail-20261117.md)로 옮겼다. 새 작업의 게이트가 아니다.

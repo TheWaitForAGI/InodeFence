@@ -62,6 +62,43 @@ def exact_keys(request: ReplayRequest, wanted: tuple[str, ...]) -> None:
         )
 
 
+#: The shared replay launcher's closing line names node-tar for every target
+#: (``scripts/local_node_tar_smoke.sh``, ``PASSED: node-tar $MODE (context=...)``; a protected
+#: launcher, not changed here). The replay hooks of the other targets show it with their own name.
+_LAUNCHER_PASSED = "PASSED: node-tar replay"
+
+
+def relabel_launcher_line(line: str, target: str) -> str:
+    """``line`` with the launcher's node-tar ``PASSED`` label replaced by ``target`` (#494)."""
+    if line.startswith(_LAUNCHER_PASSED):
+        return f"PASSED: {target} replay{line[len(_LAUNCHER_PASSED) :]}"
+    return line
+
+
+def relabeling_runner(target: str):  # type: ignore[no-untyped-def]
+    """A ``subprocess.run`` stand-in that streams the launcher's stdout line by line through
+    :func:`relabel_launcher_line` (stderr, the exit code and everything else unchanged)."""
+
+    def run(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        kwargs.pop("check", None)
+        with subprocess.Popen(
+            command,
+            stdout=subprocess.PIPE,
+            text=True,
+            errors="replace",
+            bufsize=1,
+            **kwargs,
+        ) as process:
+            assert process.stdout is not None
+            for line in process.stdout:
+                sys.stdout.write(relabel_launcher_line(line, target))
+                sys.stdout.flush()
+            returncode = process.wait()
+        return subprocess.CompletedProcess(command, returncode)
+
+    return run
+
+
 def _read_rounds(report: dict[str, Any] | None, journal: Path) -> list[dict[str, Any]]:
     if report is not None and isinstance(report.get("rounds"), list):
         return list(report["rounds"])
@@ -103,6 +140,8 @@ def controller_replay(
         "PYTHON": os.environ.get("PYTHON", sys.executable),
     }
     report_path, journal_path = report_paths(evidence_dir, run_id)
+    if runner is subprocess.run:  # a test's fake runner is used as given
+        runner = relabeling_runner(request.target)
     done = run_launcher(
         LAUNCHER,
         ["replay"],

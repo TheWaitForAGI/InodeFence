@@ -20,12 +20,19 @@ from inodefence.effect_scheduler import (
     EffectMutationScheduler,
     EffectMutationSchedulerEvidence,
     EffectUniformMutationScheduler,
+    PreViolationNoveltyScheduler,
+    applied_operators,
 )
 from inodefence.feedback import (
     EffectSearchDecision,
     EffectSearchPolicy,
     EffectSearchState,
     EffectSearchStats,
+)
+from inodefence.feedback.exploration_search import (
+    EXPLORATION_BASE_SEARCH_POLICY,
+    ExplorationPolicyId,
+    ExplorationSearchState,
 )
 from inodefence.generator import SeedCorpusId, minimal_seed_corpus, seed_corpus
 from inodefence.model import ArchiveCase, EffectRunResult
@@ -78,6 +85,9 @@ class EffectCampaignConfig:
     # None: the mutation policy's profile decides (RECORDS_BUILD_INVALID -> record, else
     # abort). Read it through ``build_invalid_policy``.
     build_invalid: BuildInvalidPolicy | None = None
+    # Exploratory policy outside EffectSearchPolicy (#511, W4 2026-11-18). None: unchanged.
+    # When set, ``search_policy`` must be its declared base (the recorded diagnostic channel).
+    exploration_policy: ExplorationPolicyId | None = None
 
     def __post_init__(self) -> None:
         if type(self.random_seed) is not int:
@@ -92,6 +102,15 @@ class EffectCampaignConfig:
             self.build_invalid, BuildInvalidPolicy
         ):
             raise ValueError("build_invalid must be a BuildInvalidPolicy or None")
+        if self.exploration_policy is not None:
+            if not isinstance(self.exploration_policy, ExplorationPolicyId):
+                raise ValueError("exploration_policy must be an ExplorationPolicyId or None")
+            base = EXPLORATION_BASE_SEARCH_POLICY[self.exploration_policy]
+            if self.search_policy != base:
+                raise ValueError(
+                    f"exploration policy {self.exploration_policy.value} requires "
+                    f"search_policy {base.value}"
+                )
 
     @property
     def build_invalid_policy(self) -> BuildInvalidPolicy:
@@ -415,8 +434,13 @@ def run_effect_campaign(
     stop_reason: str | None = None
 
     chain_max = CHAIN_MAX_ATTEMPTS.get(config.search_policy)
-    state = EffectSearchState(
-        cases, CHAIN_SEARCH_STATE_POLICY if chain_max is not None else config.search_policy
+    exploration = config.exploration_policy
+    state: EffectSearchState | ExplorationSearchState = (
+        ExplorationSearchState(cases, exploration)
+        if exploration is not None
+        else EffectSearchState(
+            cases, CHAIN_SEARCH_STATE_POLICY if chain_max is not None else config.search_policy
+        )
     )
     steps: list[EffectCampaignStep] = []
     build_invalid_steps: list[BuildInvalidStep] = []
@@ -448,8 +472,10 @@ def run_effect_campaign(
     )
     observed_names: set[str] = set()
     table = operator_ids(config.mutation_policy)
-    scheduler = (
-        EffectAdaptiveMutationScheduler(operators=table)
+    scheduler: EffectMutationScheduler | PreViolationNoveltyScheduler = (
+        PreViolationNoveltyScheduler(operators=table)
+        if exploration is not None
+        else EffectAdaptiveMutationScheduler(operators=table)
         if config.search_policy
         in (
             EffectSearchPolicy.P2_EFFECT_ADAPTIVE,
@@ -482,12 +508,24 @@ def run_effect_campaign(
             raise ValueError("mutation attempt and scheduler selection must appear together")
         scheduler_evidence = None
         if attempt is not None and selection is not None:
-            scheduler_evidence = scheduler.observe_outcome(
-                selection,
-                attempt,
-                decision.new_effect_keys,
-                decision.new_violation_fingerprints,
-            )
+            if isinstance(scheduler, PreViolationNoveltyScheduler):
+                assert isinstance(state, ExplorationSearchState)
+                scheduler_evidence = scheduler.observe_signals(
+                    selection,
+                    attempt,
+                    applied_operators(attempt),
+                    state.last.new_signals,
+                    state.last.signal_retained,
+                    decision.new_effect_keys,
+                    decision.new_violation_fingerprints,
+                )
+            else:
+                scheduler_evidence = scheduler.observe_outcome(
+                    selection,
+                    attempt,
+                    decision.new_effect_keys,
+                    decision.new_violation_fingerprints,
+                )
         step = EffectCampaignStep(
             executed,
             origin,
@@ -565,7 +603,11 @@ def run_effect_campaign(
             selection,
         )
 
-    retained = tuple(entry.case.case_id for entry in state.entries)
+    retained = (
+        state.retained_case_ids
+        if isinstance(state, ExplorationSearchState)
+        else tuple(entry.case.case_id for entry in state.entries)
+    )
     # The full result type requires a complete run (len(steps) == budget), so a non-retaining
     # run OR an early stop returns the lightweight aggregate instead.
     if not retain or stop_reason is not None:

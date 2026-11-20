@@ -224,8 +224,8 @@ wheel로 설치했다면 `INODEFENCE_HOME`(환경 변수 또는 아래 설정 �
     oras-go 2.6.1 탐색(seed 123, 실행 200)은 위반이 0건이라 재실행할 케이스가 없었고(고정 입력 회귀는 1/6 위반 판정),
     node-tar 7.5.2 탐색(seed 123, 실행 40과 200)도 위반이 0건이었습니다(등록 실험의 캠페인 예산 2000보다 작은 예산입니다).
     python-tarfile은 취약 설정(`fully_trusted`) 탐색을 받지 않아 케이스를 얻을 수 없습니다.
-    이 재실행에서 본 표시 문제 두 가지: decompress 재실행 로그에 `node-tar replay`라는 문구가 나오고, 결과 폴더(`--case`)에서
-    재실행하면 원래 기록에 fingerprint가 없어 `fingerprints 0/3`으로 표시됩니다(계약 일치는 3/3). 실제 추출기에서 재현을
+    이 재실행에서 본 표시 문제 두 가지(decompress 재실행 로그의 `node-tar replay` 문구, 결과 폴더 재실행의
+    `fingerprints 0/3` 표시, 계약 일치는 3/3)는 그 뒤 고쳤습니다([#494](https://github.com/TheWaitForAGI/InodeFence/issues/494)). 실제 추출기에서 재현을
     확인한 위반은 이 decompress의 C0(경로 경계) 한 건입니다. 하드링크 탈출(C1·C2) 위반이 재현되는 경로는 통제·합성 단위
     테스트(테스트용 backend가 하드링크 탈출을 흉내 냄)로만 확인했습니다.
   - **node-tar 더 긴 탐색:** 7.5.23, seed 20261117, budget 300을 완주했습니다(커밋 `6a2031f`, 2026-11-17, demo run,
@@ -255,8 +255,27 @@ inodefence explore --target decompress --version @xhmikosr/decompress@11.1.4 --b
 `--version`은 `latest`나 정확한 버전, `--budget`은 실행 수(seed 케이스 수 이상), `--seed`는 난수
 seed입니다. 탐색 정책·sentinel 구성은 등록 실험 설정을 기본값으로 쓰며, 끝나면 공통 형식
 `result.json`(`inodefence-target-result-v1`, mode=campaign)과 한 장짜리 `summary.md`를 씁니다.
-`--profile fast`(기본 `strict`)는 실행마다 하는 공용 이미지 재빌드만 건너뛰는 선택 옵션이며, 조건·기록·측정값은
+`--image-tag-suffix`(따로 준비한 이미지 태그)의 값이 `-`로 시작하면 `--image-tag-suffix=-win`처럼 `=` 형식으로 줍니다
+(다음 버전; 공백 형식은 종료 3으로 거부되며 메시지가 `=` 형식을 안내합니다. 0.2.0에서는 `=` 형식도 거부됨).
+**node-tar와 python-tarfile(다음 버전, D067).** 신원 확인 간격은 node-tar에만 남는다. node-tar 7.5.2 · default 정책 · 예산 2000에서 첫 측정은 F3(판정 불가)였고, 결과 전에 고정한 후속 측정(W4 규칙 v3)은 통과했다: 세는 seed 5개(58005, 58006, 58009, 58010, 58014) 모두 비교 도구 f523f63 종료 0, 갈림 0/2000 step(엔진 3ca9c69). 이 조건에서 STRICT와 FAST의 궤적이 일치함을 확인한 것이고, 다른 버전·정책·예산·대상은 측정하지 않았다. node-tar FAST 결과의 `campaign.identity_checks`에는 `fast_acceptance`(그 조건과 정확히 같으면 `passed`, 아니면 `interval_on_unmeasured_scope`)와 측정 범위 `acceptance_scope`가 적힙니다. python-tarfile의 FAST는 아래 decompress·oras-go처럼 재빌드 생략만 적용하고 케이스마다 확인합니다((seed 57590) python-tarfile: 실행 전 고정한 기준(compare exit 0)은 충족. 단 세 실행 모두 위반 0건이라 위반이 없는 실행에서의 궤적 일치(갈림 0/300)이며, 이 대상의 위반 경로에 대한 근거는 없다). 케이스당 시간(HOST1 관찰값, 위 node-tar 조건의 후속 측정, 수용 기준 아님): STRICT 1.245 s, FAST 0.614 s.
+
+**decompress·oras-go(다음 버전, D065).** decompress·oras-go: FAST는 D064 신원확인 간격(수용 측정 없음)을 적용하지 않고 케이스마다 확인; 공용 이미지 재빌드 생략(0.2.0, 타이밍은 node-tar에서만 측정, 두 대상 per-target 속도 미측정)만 적용; 두 대상 FAST 수용은 측정 안 됨(FAST 생산자 없음). 런처 직접 실행의 간격은 측정·수용된 모드가 아니며 그 출력은 수용 증거가 아니다.
+`--profile fast`(기본 `strict`)는 실행마다 하는 공용 이미지 재빌드를 건너뛰고, 다음 버전부터는 이미지 신원 확인을 캠페인
+단위(시작·200건마다·끝)로 줄이는 선택 옵션이며, 조건·기록·측정값은
 [한계와 주의](#한계와-주의)의 "실행 프로필"에 있습니다.
+
+**변이 정책 선택(다음 버전, 탐색용).** `--mutation-policy uniform-b-grammar-v2-freeze-3-fixed-baseline-v1`은
+node-tar와 python-tarfile 탐색에서 기본 변이 정책 대신 v2 문법 정책(탈출 깊이 0..3)을 씁니다. 받는 값은 이것 하나이고,
+decompress·oras-go에 주면 아무것도 준비·실행하지 않고 종료 3으로 거부합니다. 옵션을 주면 `result.json`의 `campaign.mutation_policy`에 정책이
+적힙니다(루프 보고서가 그 정책을 돌렸는지 확인한 뒤; 다르면 결과 없이 종료 2). v2 정책은 TAR로 만들 수 없는 입력을 낼 수
+있는데, 그런 실행(build-invalid)은 예산 1단위를 쓰고 추출하지 않으며 미판정이 아닙니다. 그 수는 `campaign.build_invalid`에
+적히고(0이면 키 없음) 미판정 비율의 분모에서 빠집니다. 이 수는 루프 보고서의 실행 수 − 종료 상태 합(python-tarfile은 실행 수 − 케이스 기록 수)으로 정확히
+셉니다. 케이스 번호(`step-N`)와 첫 위반까지 실행 수는 build-invalid를 포함한 step 수입니다. 셀 수 없거나 live 스냅숏과 어긋나면 비율을 낮게 적는 대신 결과 없이 종료 2입니다. 루프 보고서는 스키마 5입니다. 옵션이 없으면 실행과 `result.json`은
+전과 같습니다. 호출자 환경의 `DEMO_MUTATION_POLICY`와 `DEMO_POLICY`(search 정책)는 어느 대상의 탐색에도 전달되지
+않으며, 설정돼 있으면 stderr에 무시한다는 경고(`TARGET-EXPLORE WARNING`) 한 줄이 나옵니다. 반대로 node-tar 탐색은
+`DEMO_SENTINEL_SEED`·`DEMO_SENTINEL_COUNT`·`DEMO_OBSERVER_INTEGRITY_POLICY`를 일부러 받습니다. 없으면 등록 실험의
+sandbox 값(사전등록에서 읽음)을 쓰고, 있으면 그 값을 씁니다. 쓴 값은 live `case.json`의 `run_settings`와, live 폴더가
+없는 실행에서도 `<--out>/runtime/`의 실행 기록(launch의 `env`)에 남습니다. `result.json`은 덮어쓰기로 바뀌지 않습니다.
 
 node-tar 탐색(`--version 7.5.23 --seed 123 --budget 20`, engineering smoke 2026-11-16)에서 실제로 생긴 구조:
 
@@ -426,7 +445,8 @@ inodefence status ~/inodefence-explore   # 진행 스냅샷 + 위반 케이스 �
 
 - `progress.json` — 주기적으로(실행 N회마다·일정 시간마다·위반 직후) 갱신되는 한 시점 스냅샷:
   실행 수, 초당 실행, **종료 상태별 수(success·rejected·failed·timed_out)**, 미판정 수와 비율,
-  위반 step 수와 고유 fingerprint 수, 쓰기 오류. `status`는 갱신이 오래 멈추면 `STALE`로 경고합니다.
+  위반 step 수와 고유 fingerprint 수, 쓰기 오류, v2 변이 정책이면 build-invalid 수(0이면 없음, `status` 줄의
+  `build-invalid=N`). `status`는 갱신이 오래 멈추면 `STALE`로 경고합니다.
 - `violations/run-NNNNNN/` — 위반이 난 케이스를 **발생 즉시** 기록합니다(끝을 기다리지 않음).
   같은 fingerprint의 반복은 개수만 세고 파일은 fingerprint당 처음 몇 개만 남깁니다. 탐색이
   중간에 죽어도 그때까지 쓴 파일은 남습니다.
@@ -496,7 +516,7 @@ fingerprint, 입력의 SHA-256, 그리고 **그 한 건을 같은 이미지에�
 | 대상 | 위반 없음이 판정(깨끗한 음성)으로 남는 실행 | 미판정이 되는 실행 |
 | --- | --- | --- |
 | node-tar, decompress | `rejected`; trace가 온전한 `success` | `failed`, `timed_out`; trace가 온전하지 않은 `success` (decompress는 worker 기록이 없는 실행도) |
-| python-tarfile | `rejected`; worker 보고가 종료 상태와 일치하는 `failed`(tarfile이 예외로 거부한 것, D1과의 의도된 편차); trace가 온전한 `success`; 빈 아카이브 | `timed_out`; worker 보고가 없거나 종료 상태와 어긋나는 실행; trace가 온전하지 않은 `success` |
+| python-tarfile | `rejected`; worker 보고가 종료 상태와 일치하는 `failed`(tarfile이 예외로 거부한 것, D1과의 의도된 편차); trace가 온전한 `success`(entry 0개인 빈 아카이브 포함) | `timed_out`; worker 보고가 없거나 종료 상태와 어긋나는 실행; trace가 온전하지 않은 `success`. `success`의 trace가 온전하려면 worker가 보고한 처리 member 수가 entry 수와 같아야 함 |
 | oras-go | `success`, `rejected` | 그 밖의 모든 실행 |
 
 캠페인 판정: 위반이 하나라도 있으면 FAIL. 판정된 실행이 하나도 없거나 미판정 비율이 상한
@@ -533,6 +553,14 @@ inodefence replay ~/inodefence-explore/target-explore/<실행>-result --case ste
 
 대상별 조건은 기록에서 읽고, 명령 옵션으로 바꿀 수 없습니다(다른 조건으로 돌린 것을 재현이라고 적지 않기 위해).
 
+**추가 검출기 기록(다음 버전, node-tar만, 기록 전용).** `--additive-detectors`를 주면 판정된 라운드마다 두 추가 검출기의
+요약을 `additive_detectors` 열로 남깁니다(계열 `additive-detectors-v1 (record-only)`). 실행 조건·판정(C0/C1/C2, 지문)은
+바뀌지 않고, 옵션이 없으면 기록은 전과 같습니다. 열에는 경로를 쓰지 않고 수·영역·근거·증거 해시만 씁니다.
+`generalized_identity`는 물리 기준(추출 객체와 바깥 객체의 장치·inode 일치)이지만 사후 스냅숏에 든 객체만 비교하므로
+0은 "그 범위에서 없음"입니다. `symlink_referent`는 어휘 기준이라, 앞서 디스크에 만들어진 심링크를 거쳐서만 밖으로
+나가는 사슬은 루트 안으로 읽혀 0일 수 있습니다. 0보다 큰 수는 **후보 선별 신호**이며 위반 판정이 아닙니다.
+요약의 `additive_candidate_signal_rounds`는 검출기별로 그런 라운드 수를 셉니다. 다른 대상에 주면 종료 3입니다.
+
 | 대상 | 기록에서 고정하는 것 | 실행 전에 거부하는 것(종료 2, 이유 출력) |
 | --- | --- | --- |
 | node-tar | 이미지 id, sentinel 집합(seed·개수), 관찰 무결성 정책, 프로필 | 이 값들이 없는 기록. **결과 폴더는 이 값을 담지 않으므로 node-tar는 케이스 폴더로만** 재실행 |
@@ -564,11 +592,14 @@ inodefence replay ~/inodefence-explore/target-explore/<실행>-result --case ste
 네 대상의 재실행은 모두 **같은 런처의 재실행 모드**(`scripts/local_node_tar_smoke.sh replay`: 정확한 이미지 id와 입력
 한 줄만 받고 대상 이미지를 빌드하지 않음)를 거쳐 같은 컨트롤러·호스트 broker·backend로 돕니다. 컨트롤러 안에서 그
 대상의 탐색이 쓰는 실행 함수와 판정 규칙을 그대로 부릅니다. 그래서 재실행 컨트롤러 이름은 대상과 무관하게
-`inodefence-local-controller-replay-…`이고, 런처의 마지막 줄은 어느 대상이든 `PASSED: node-tar replay`로 나옵니다
-(런처 문구이며 대상 표시가 아닙니다).
+`inodefence-local-controller-replay-…`입니다. 런처의 마지막 줄은 런처 안에서 `PASSED: node-tar replay`로 고정돼 있어,
+python-tarfile·decompress·oras-go 재실행은 그 한 줄을 실제 대상 이름(`PASSED: decompress replay …`)으로 바꿔
+보여 줍니다(런처 파일은 바꾸지 않음).
 
 재실행은 탐색과 같은 격리로 돌고, 회차별 판정과 **같은 계약을 다시 위반한 비율**·**fingerprint가
-일치한 비율**을 케이스 폴더 **옆** `run-NNNNNN.replay-<UTC>/replay.json`에 씁니다(원본 폴더는
+일치한 비율**을 케이스 폴더 **옆** `run-NNNNNN.replay-<UTC>/replay.json`에 씁니다. 결과 폴더(`--case`)에서 재실행하면
+원래 기록에 fingerprint가 없으므로 일치 수·비율은 0이 아니라 비교 불가(`fingerprints_comparable: false`, 값 `null`,
+터미널은 `fingerprints n/a`)로 적습니다(원본 폴더는
 건드리지 않습니다). `case.json`에 기록된 이미지 id가 이 호스트에 없으면 **다시 준비하거나 다른
 이미지로 바꾸지 않고 멈춥니다**(다른 이미지로 돌린 것을 재현이라고 적지 않기 위해서). 재실행에는
 탐색의 실행 설정이 `case.json`에 있어야 하며, 없는 옛 케이스는 거부합니다.
@@ -635,7 +666,7 @@ inodefence compare <A의 result.json> <B의 result.json>
 | 0 | PASS | 재실행 완료 | 정상 | FAIL 없음(`UNKNOWN`은 있을 수 있음) | 정상(`compare`는 두 결과의 판정과 관계없이 보여 주었으면 0) |
 | 1 | FAIL(위반 판정) | 재실행 미완료(끝난 회차는 남음) | — | FAIL 하나 이상 | — |
 | 2 | ERROR 판정. `explore`는 컨트롤러가 시작된 뒤의 중단(런처 비정상 종료, 루프 abort, 루프 보고서 없음)도 2이며 결과를 발행하지 않음(네 대상 공통) | 같은 입력·조건으로 재실행 불가 | 사용법 오류 | 사용법 오류 | 읽기·쓰기 실패 / 사용법 오류 |
-| 3 | 실행 전 거부 — 판정 없음: 사용법 오류(없는 옵션 값, `--budget 0` 등), 저장소 안 `--out`, 쓸 수 없는 `--out`(파일이거나 권한 없음), 상대 경로 `INODEFENCE_OUTPUT_DIR`, `--auto-prepare` 없음, 설정 파일 오류, 이미지·준비 문제, Docker가 이미지 질문에 답하지 않음(준비하지 않음), 같은 `--out`에 이 실행의 결과가 이미 있음(덮어쓰지 않음) 등 | 사용법 오류(`--rounds 0` 등), 이미지가 이 호스트에 없음, Docker가 이미지 질문에 답하지 않음, 같은 실행 이름의 컨트롤러·볼륨이 이미 있음, 저장소 안 폴더, 저장소를 못 찾음, 설정 파일 오류 | 저장소를 못 찾음, 설정 파일 오류 | — | — |
+| 3 | 실행 전 거부 — 판정 없음: 사용법 오류(없는 옵션 값, `--budget 0`, decompress·oras-go의 `--mutation-policy` 등), 저장소 안 `--out`, 쓸 수 없는 `--out`(파일이거나 권한 없음), 상대 경로 `INODEFENCE_OUTPUT_DIR`, `--auto-prepare` 없음, 설정 파일 오류, 이미지·준비 문제, Docker가 이미지 질문에 답하지 않음(준비하지 않음), 같은 `--out`에 이 실행의 결과가 이미 있음(덮어쓰지 않음) 등 | 사용법 오류(`--rounds 0` 등), 이미지가 이 호스트에 없음, Docker가 이미지 질문에 답하지 않음, 같은 실행 이름의 컨트롤러·볼륨이 이미 있음, 저장소 안 폴더, 저장소를 못 찾음, 설정 파일 오류 | 저장소를 못 찾음, 설정 파일 오류 | — | — |
 | 4 | — | 이 대상은 재실행 미지원(지금 등록된 네 대상에는 해당 없음) | — | — | — |
 
 `tui`는 0(`q`로 종료), 3(시작하지 않음: Textual 없음, 대화형 터미널 아님, `--refresh`가 0 이하), 사용법 오류 2입니다. `dashboard`는 0(Ctrl-C로 멈춤), 3(시작하지 않음: FastAPI·uvicorn 없음, 서버 기동 실패), 사용법 오류 2입니다.
@@ -695,7 +726,19 @@ make target-run TARGET=node-tar TARGET_VERSIONS="7.5.2 7.5.3" AUTO_PREPARE=1 PYT
   오래 진척이 없으면 몇 초째인지와 함께 `STALE` 경고만 출력하고, 실행 중에는 처리량(runs/min)과 남은 예산의
   예상 시간을 보여 줍니다(관찰만).
 - **실행 프로필(`explore --profile`):** 기본은 STRICT(검증된 실행 그대로)이고, `--profile fast`는 사용자가 직접
-  골라야만 켜집니다. FAST가 바꾸는 것은 한 가지입니다. 런처가 실행마다 다시 하는 공용 이미지 두 개(컨트롤러·helper)의
+  골라야만 켜집니다. FAST가 바꾸는 것은 두 가지입니다.
+  - **이미지 신원 확인 빈도**([D064](DECISIONS.md), 다음 버전): STRICT는 케이스마다 확인 전용 컨테이너를 하나 더 띄워
+    이미지 안 worker·대상 파일의 해시를 다시 잽니다. FAST는 그 확인을 캠페인 시작·**200번째 케이스마다**·끝에만 합니다.
+    N=200은 고정이며 고르는 옵션이 없고, 환경 변수 `DEMO_IDENTITY_CHECK_EVERY`는 무시합니다(경고 한 줄).
+    - 실행 컨테이너와 격리 설정은 그대로입니다.
+    - 끝 확인이 실패하면 결과 없이 종료 2입니다.
+    - 결과의 `campaign.identity_checks`와 `runtime-record.json`에 기록됩니다.
+    - 확인 사이에 남는 보호는 대상마다 다릅니다:
+      - node-tar: 실행 컨테이너 안의 worker가 매번 같은 해시를 다시 확인하므로 잃는 탐지가 없습니다.
+      - python-tarfile·decompress·oras-go: 실행이 변경 불가한 이미지 ID로 고정되는 것뿐입니다. 어긋남은 다음 주기 확인이나 끝 확인에서 잡힙니다.
+    - STRICT와 `replay`는 케이스마다 그대로 확인합니다.
+    - 시간 효과는 아직 재지 않았습니다.
+  - **공용 이미지 재빌드 생략:** 런처가 실행마다 다시 하는 공용 이미지 두 개(컨트롤러·helper)의
   빌드를, 그 이미지가 이 checkout의 빌드 입력(Dockerfile 두 개와 helper 한 파일의 SHA-256)으로 런처 자신이 빌드한
   것임이 확인된 경우에만 건너뜁니다(`SKIP_BUILD=1`). 확인 기록은 사용자 캐시(`$XDG_CACHE_HOME/inodefence/`,
   기본 `~/.cache`)에 Docker context별로 남고 24시간 동안만 유효하며, 입력·이미지 ID가 달라지면 무효입니다. 확인이
@@ -707,8 +750,9 @@ make target-run TARGET=node-tar TARGET_VERSIONS="7.5.2 7.5.3" AUTO_PREPARE=1 PYT
   **얻는 것은 작습니다.** WSL2 호스트 한 대의 engineering smoke(demo run, node-tar 7.5.23, seed 123, budget 20, 같은
   코드로 번갈아 5회씩, 2026-11-17)에서 FAST는 컨트롤러 준비 전 구간을 실행당 평균 1.5 s(짝지은 차이 1.0~2.0 s) 줄였고(STRICT 평균 2.78 s[2.25~3.43],
   FAST 1.33 s[1.16~1.52]), 케이스당 시간은 그대로였습니다(STRICT 1.96 s, FAST 1.92 s). 전체 실행 시간은 호스트 부하에 따른
-  편차(STRICT 42~61 s, FAST 42~56 s)가 이 차이보다 커서 구분되지 않았습니다. 케이스당 비용(약 2 s, docker CLI 호출 약 23회)은 보호
-  영역인 격리 실행 경로 안에 있어 이 프로필이 건드리지 않습니다. REPLAY는 프로필이 아니라 위
+  편차(STRICT 42~61 s, FAST 42~56 s)가 이 차이보다 커서 구분되지 않았습니다. 이 측정은 재빌드 생략만 있던 FAST(D064 전)의
+  값입니다. 케이스당 비용(약 2 s, docker CLI 호출 약 23회)의 실행 컨테이너 몫은 보호 영역인 격리 실행 경로 안에 있어 어느
+  프로필도 건드리지 않습니다. 위 신원 확인 빈도가 줄이는 것은 확인 전용 컨테이너 몫입니다. REPLAY는 프로필이 아니라 위
   재실행 절차이며, 네 대상을 지원하고 탐색과 같은 STRICT 실행 세션으로 돕니다.
 - **인프라 중단의 표시:** `explore`가 깨끗하게 끝나지 않으면(런처 종료 코드가 0이 아니거나 중단됨) 종료 코드와
   판정은 그대로 두고 stderr에 한 줄을 더 냅니다.

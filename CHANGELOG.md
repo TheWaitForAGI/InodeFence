@@ -5,6 +5,69 @@
 실험 결과와 호스트별 반복 로그 전문은 싣지 않고, 각 버전의 검증은 요약과 출처만 둔다. 실행별 기록은
 [docs/LOG.md](docs/LOG.md)·[docs/STATUS.md](docs/STATUS.md)·PR 본문에 있다.
 
+## [Unreleased]
+
+### 추가된 사용자 기능
+- `inodefence explore --mutation-policy uniform-b-grammar-v2-freeze-3-fixed-baseline-v1`: node-tar와 python-tarfile 탐색에서
+  v2 문법 변이 정책(탐색용)을 고른다. 받는 값은 이것 하나이고(v2.1 seed 코퍼스 변형은 열지 않음), decompress·oras-go는
+  실행 전 종료 3으로 거부한다. python-tarfile의 build-invalid 수는 루프의 step 수 − 케이스 기록 수다. 옵션을 주면 `result.json`의 `campaign.mutation_policy`에 적는다(루프 보고서가 그 정책을 돌렸는지 확인한 뒤).
+  기본값은 바뀌지 않는다. [USAGE](docs/USAGE.md#탐색-돌리기)
+- `result.json` 선택 키 `campaign.build_invalid`: TAR로 만들 수 없어 추출하지 않은 실행 수(v2 정책에서만, 0이면 키 없음).
+  `summary.md`에 한 줄로 보인다. 수는 루프 보고서의 실행 수 − 종료 상태 합이고, 셀 수 없거나 live 스냅숏과 어긋나면
+  결과 없이 종료 2다(키를 빼서 비율을 낮게 적지 않는다).
+
+- `inodefence replay --additive-detectors`(node-tar, 기록 전용): 판정된 라운드마다 두 추가 검출기의 요약을
+  `additive_detectors` 열로 남긴다(수·영역·근거·증거 해시, 경로 없음). 판정(C0/C1/C2·지문)과 실행 조건은 그대로이고,
+  옵션이 없으면 입력 줄·라운드·`replay.json`이 전과 같다. 0보다 큰 수는 후보 선별 신호이며 위반 판정이 아니다.
+  [USAGE](docs/USAGE.md)
+
+### 변경된 동작과 호환성
+- 탐색 드라이버(네 대상 모두)가 호출자 환경의 `DEMO_MUTATION_POLICY`를 런처에 넘기지 않는다. 전에는 node-tar와
+  python-tarfile 탐색에서 이 변수가 그대로 전달돼, 문서에 없는 방법으로 변이 정책이 바뀌고 `result.json`에는 남지 않았다.
+  정책을 바꾸려면 `--mutation-policy`를 쓴다. 이 변수가 설정돼 있으면 무시하면서 stderr에 경고 한 줄
+  (`TARGET-EXPLORE WARNING: environment variable DEMO_MUTATION_POLICY=… is ignored; use --mutation-policy …`)을 낸다.
+- 같은 방식으로 호출자 환경의 `DEMO_POLICY`(search 정책)도 넘기지 않고 경고 한 줄을 낸다. 전에는 node-tar와 python-tarfile
+  탐색의 search 정책이 이 변수로 바뀌었다. 탐색의 search 정책은 대상마다 고정이며 고르는 옵션은 없다.
+- 미판정 비율(`campaign.unjudged_ratio`)의 분모에서 build-invalid 실행을 뺀다(분모 = 실행 수 − `build_invalid`). 이 키가
+  없는 결과(기본 정책의 모든 실행과 0.2.0이 쓴 파일)는 값이 그대로다. 옵션 없는 실행의 `result.json`·`summary.md`는
+  `main`(`fccdf35`) 코드가 같은 입력으로 쓴 것과 바이트 동일하다(node-tar 탐색 4경우, python-tarfile 탐색, verify 셀;
+  `tests/test_explore_mutation_policy.py`). 예외는 아래 #533 항목(python-tarfile 탐색이 빈 아카이브를 만나는 경우)이다.
+- `--profile fast`가 이미지 신원 확인 컨테이너를 케이스마다가 아니라 캠페인 시작·200건마다·끝에만 띄운다(네 대상,
+  [D064](docs/DECISIONS.md)). 실행 컨테이너와 격리·판정은 그대로이고, 끝 확인이 실패하면 결과 없이 종료 2다. FAST 결과에는
+  `campaign.identity_checks`(확인 기록)가 남고 runtime 기록에 `identity_check_every`가 남는다. 기본(`strict`)과 `replay`는
+  그대로다. N=200은 고정이고 고르는 옵션은 없다. 호출자 환경의 `DEMO_IDENTITY_CHECK_EVERY`는 무시하고 경고 한 줄을 낸다.
+  확인 사이에 남는 보호는 대상마다 다르다. node-tar는 실행 컨테이너 안의 worker가 매번 다시 확인하고, 나머지 셋은
+  고정된 이미지 ID뿐이다. 시간 효과는 아직 재지 않았다.
+- D067(범위 정정): D064 간격은 node-tar에만 남고 python-tarfile의 FAST도 케이스마다 확인한다. node-tar 7.5.2 · default 정책 · 예산 2000에서 첫 측정은 F3(판정 불가)였고, 결과 전에 고정한 후속 측정(W4 규칙 v3)은 통과했다: 세는 seed 5개(58005, 58006, 58009, 58010, 58014) 모두 비교 도구 f523f63 종료 0, 갈림 0/2000 step(엔진 3ca9c69). 이 조건에서 STRICT와 FAST의 궤적이 일치함을 확인한 것이고, 다른 버전·정책·예산·대상은 측정하지 않았다. node-tar FAST 결과는 `campaign.identity_checks`에 `fast_acceptance`(`passed`는 그 조건과 정확히 같을 때만, 그 밖은 `interval_on_unmeasured_scope`)와 `acceptance_scope`를 적는다. 케이스당 시간(HOST1 관찰값, 위 node-tar 조건의 후속 측정, 수용 기준 아님): STRICT 1.245 s, FAST 0.614 s. [D067](docs/DECISIONS.md)
+- D065(위 항목의 범위 정정): decompress·oras-go: FAST는 D064 신원확인 간격(수용 측정 없음)을 적용하지 않고 케이스마다 확인; 공용 이미지 재빌드 생략(0.2.0, 타이밍은 node-tar에서만 측정, 두 대상 per-target 속도 미측정)만 적용; 두 대상 FAST 수용은 측정 안 됨(FAST 생산자 없음). 결과의 `campaign.identity_checks`는 `per-case`(`interval: 1`, `fast_acceptance: not_measured`, `acceptance_evidence: false`, `total_checks` 없음)이고 실행 시작에 stderr 한 줄이 나온다. 런처 직접 실행의 간격은 측정·수용된 모드가 아니며 그 출력은 수용 증거가 아니다. [D065](docs/DECISIONS.md)
+- python-tarfile 탐색이 실행 중 스텝 전체(스냅숏·trace)를 메모리에 쌓지 않는다(#542). `result.json`과 `summary.md`는
+  그대로다. 엔진 원시 보고서(`inodefence-python-tarfile-explore-*.json`)에서는 `steps` 배열이 빠지고 `streaming: true`가 붙는다.
+  스텝 기록은 옆의 `.steps.jsonl`에 있다.
+- python-tarfile 탐색의 케이스 번호(`step-N`, `run_index`)와 `campaign.runs_to_first_violation`을 추출 횟수가 아니라
+  build-invalid를 포함한 루프 step 수로 센다(node-tar와 같은 단위, D060). v2 정책에서만 드러나는 번호 정합이다: build-invalid
+  step이 없는 실행(기본 정책 전부)은 번호가 그대로이고, 이미 기록된 결과는 다시 세지 않는다.
+- decompress·oras-go 탐색이 2000을 넘는 `--budget`을 받는다([D066](docs/DECISIONS.md), #542). 두 대상의 루프 보고서는 실행 중 스텝 전체를 메모리에 쌓지 않고 스텝 기록만 모아 쓴다. 보고서·`result.json`·`summary.md`의 바이트는 그대로다. 다른 모드의 예산 상한(2000)은 그대로다.
+- 새 선택 키가 든 `result.json`은 이 버전 이상의 `inodefence status`·`summary`로 읽는다([호환 약속](docs/USAGE.md#호환-약속)).
+
+### 고친 문제
+- `inodefence verify`·`explore`: `-`로 시작하는 `--image-tag-suffix`(예: `--image-tag-suffix=-win`)가 드라이버로 넘어가며
+  두 인자로 나뉘어 실행 전에 거부되던 문제([#528](https://github.com/TheWaitForAGI/InodeFence/issues/528)). 이제 하나의
+  값으로 전달된다. 공백 형식(`--image-tag-suffix -win`)은 여전히 받을 수 없고, 거부 메시지(종료 3)가 `=` 형식을 안내한다.
+  옵션을 주지 않은 실행과 `-`로 시작하지 않는 값의 동작은 그대로다.
+- `inodefence replay`의 표시 두 가지([#494](https://github.com/TheWaitForAGI/InodeFence/issues/494)).
+  python-tarfile·decompress·oras-go 재실행의 런처 마지막 줄이 `PASSED: node-tar replay`로 나오던 것을 실제 대상
+  이름으로 보여 준다(공유 런처는 그대로, 재실행 쪽에서 그 한 줄만 바꿈). 원래 기록에 fingerprint가 없을 때(결과 폴더
+  재실행) `replay.json`의 `same_fingerprints`·`fingerprint_match_rate`를 0 대신 `null`로 적고 새 키
+  `fingerprints_comparable: false`를 더하며, 터미널은 `fingerprints n/a`로 보여 준다. 재현 판정(`conclusion`), 종료 코드,
+  `result.json`은 바뀌지 않는다.
+- python-tarfile 판정: entry가 0개인 아카이브를 오류 없이 끝낸 실행이 trace 미완결(`execution_backend_failure`)로 기록돼,
+  탐색에서는 예외 조항으로 판정되면서 루프 보고서의 step은 무효(`observer_integrity`)로 갈리던 문제
+  ([#533](https://github.com/TheWaitForAGI/InodeFence/issues/533)). 이제 `success`의 trace는 모든 entry가 성공하고 worker가
+  보고한 처리 member 수가 entry 수와 같을 때 완결이다. 빈 아카이브는 worker가 `members: 0`을 보고하면 완결·유효이고, 탐색에서
+  피드백 대상이 될 수 있다(새 효과 키는 없다). worker 보고가 없거나 읽을 수 없는 `success`는 entry 수와 상관없이 미완결이다.
+  탐색 규칙의 빈 아카이브 예외는 없앴다. C0/C1/C2 판정은 바뀌지 않는다. 같은 seed의 python-tarfile 탐색이 빈 아카이브를
+  만나는 경우 이전 결과와 바이트가 같다고 보장하지 않는다.
+
 ## [0.2.0] — 2026-11-18
 
 첫 릴리스다. 아래 내용은 `main`에 있다(착지 [#484](https://github.com/TheWaitForAGI/InodeFence/pull/484), 그 뒤

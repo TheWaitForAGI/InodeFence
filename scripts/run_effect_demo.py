@@ -54,6 +54,7 @@ from inodefence.sentinel_set import (
     generate_sentinel_set,
 )
 from inodefence.target_result import JUDGED, RUN_ERROR
+from inodefence.targets.identity_schedule import apply_identity_schedule, finish_identity_schedule
 from inodefence.targets.node_tar_effect import (
     NativeEffectProfile,
     NodeTarEffectTarget,
@@ -120,6 +121,7 @@ DEMO_MODES = (
     ORAS_GO_CAMPAIGN_MODE,
     PYTHON_TARFILE_CAMPAIGN_MODE,
 )
+UNCAPPED_BUDGET_MODES = (EXPLORE_DEMO_MODE, DECOMPRESS_CAMPAIGN_MODE, ORAS_GO_CAMPAIGN_MODE)  # #542
 PYTHON_TARFILE_FILTERS = ("data", "fully_trusted")
 HISTORICAL_LABEL = "demo run"
 EXPLORATION_LABEL = "exploratory demo run"
@@ -288,6 +290,7 @@ DEMO_FORWARDED_ARGUMENTS = (
     "runtime_version",
     "extraction_filter",
     "oras_go_artifact_layout",
+    "identity_check_every",
 )
 
 
@@ -295,6 +298,7 @@ def add_demo_arguments(parser: argparse.ArgumentParser) -> None:
     """effect-demo(s) only; defaults apply inside the reports (P2, 123, 20, policy)."""
     parser.add_argument("--seed", type=int)
     parser.add_argument("--budget", type=int)
+    parser.add_argument("--identity-check-every", type=int)  # FAST explore only (#536)
     parser.add_argument("--policy", choices=tuple(policy.value for policy in EffectSearchPolicy))
     parser.add_argument(
         "--mutation-policy", choices=tuple(policy.value for policy in MutationPolicy)
@@ -361,7 +365,7 @@ def check_demo_arguments(parser: argparse.ArgumentParser, args: argparse.Namespa
         # not grow with the run count, and a long single campaign is the point. Every other mode
         # (demo, historical, qualification) keeps the cap so a bounded run cannot be asked for an
         # unbounded one by mistake. This is the only budget rule the explore mode relaxes.
-        if args.mode != EXPLORE_DEMO_MODE and args.budget > MAX_NATIVE_BUDGET:
+        if args.mode not in UNCAPPED_BUDGET_MODES and args.budget > MAX_NATIVE_BUDGET:
             parser.error(f"effect demo budget must be in 1..{MAX_NATIVE_BUDGET}")
     tar_version = getattr(args, "tar_version", None)
     if tar_version is not None and args.mode not in (HISTORICAL_DEMO_MODE, EXPLORE_DEMO_MODE):
@@ -411,6 +415,8 @@ def demo_options(args: argparse.Namespace) -> dict:
         options["mutation_policy"] = MutationPolicy(args.mutation_policy)
     if getattr(args, "observer_integrity_policy", None) == "invalid-continue":
         options["observer_integrity_continue"] = True
+    if getattr(args, "identity_check_every", None) is not None:
+        options["identity_check_every"] = args.identity_check_every
     return options
 
 
@@ -627,6 +633,7 @@ def exploration_demo_report(
     live_dir: Path | None = None,
     engine_commit: str | None = None,
     stream: bool = True,
+    identity_check_every: int | None = None,
 ) -> dict[str, object]:
     """Run the state-aware effect loop on an arbitrary caller-prepared node-tar image.
 
@@ -652,6 +659,7 @@ def exploration_demo_report(
         mutation_policy=mutation_policy,
     )
     target = NodeTarEffectTarget.bind(backend, image_id, profile=NativeEffectProfile.FULL)
+    target, schedule = apply_identity_schedule(target, identity_check_every)
     vocab_mode = next(
         (
             mode.value
@@ -802,6 +810,7 @@ def exploration_demo_report(
             result = run_effect_campaign(
                 minimal_seed_corpus(), produce, config, on_step=record_step
             )
+        identity_record = finish_identity_schedule(target, schedule)
     except KeyboardInterrupt as error:
         if recorder is not None:
             recorder.close(state="stopped", stop_reason=repr(error))
@@ -864,6 +873,7 @@ def exploration_demo_report(
     )
     apply_sentinel_set_record(report, sentinel_set)
     apply_infra_reexecutions(report, stall_recovery)
+    report.update(identity_record)
     return report
 
 

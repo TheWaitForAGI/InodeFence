@@ -18,10 +18,21 @@ Rules every field follows, so no interface has to decide them again:
   never folded into "no violation".
 - **Separate axes stay separate** (one enum each): how the extractor ended (:class:`Termination`),
   whether the oracle was evaluated (:class:`Judgment`), the campaign verdict (:class:`Verdict`), a
-  violation the oracle flagged (:class:`FindingClass` -- always a *candidate*), and what a replay
-  of it concluded (:class:`ReplayConclusion`). Nothing here says "confirmed vulnerability"; the
-  strongest statement the data supports is "reproduced under the same conditions in n of the
-  judged rounds" (:class:`ReplayRecord`).
+  violation the oracle flagged in an exploration (:class:`FindingClass` -- always a *candidate*),
+  and what a replay of it concluded (:class:`ReplayConclusion`). Nothing here says "confirmed
+  vulnerability"; the strongest statement the data supports is "reproduced under the same
+  conditions in n of the judged rounds" (:class:`ReplayRecord`).
+- **A known fixture is not a candidate.** A violation in a ``fixture-regression`` result (a verify
+  cell: hand-built fixtures run once, a controlled reproduction) is
+  :attr:`CaseRow.fixture_violation`, never a :class:`FindingClass`; it is counted apart
+  (:attr:`RunSummary.fixture_violations`, :attr:`RunSnapshot.fixture_violations`) and is not a
+  replay target. Which one a row is follows the result's own ``mode``, not the folder.
+- **A run that has written only its launcher log is still a run.** python-tarfile, decompress
+  and oras-go write nothing under ``target-explore/`` until they end; while they run,
+  :func:`discover_runs` lists the output folder from its launcher log alone (``run_id`` ``None``,
+  source :attr:`Source.LAUNCHER_LOG`). It is never simply "running": its state is an estimate
+  from the launcher log's last write (:class:`LauncherState`, :func:`launcher_activity`), so a
+  launch killed before writing its record turns into "no activity" instead of running forever.
 - **Broken input is a state, not an exception.** ``result.json`` is not written atomically, so a
   file that does not parse is :attr:`ReadState.NOT_READY`; a missing, unreadable or foreign file is
   reported as such. Keys a newer version adds are kept in ``extras``; a result the strict reader
@@ -38,9 +49,11 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import stat
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, fields, replace
+from datetime import UTC, datetime
 from enum import StrEnum
 from hashlib import sha256
 from pathlib import Path
@@ -58,8 +71,10 @@ from inodefence.live_exploration import (
 from inodefence.target_result import (
     _CAMPAIGN_KEYS,
     _CAMPAIGN_OPTIONAL,
+    TERMINATIONS,
     CampaignInfo,
     CaseVerdict,
+    ResultMode,
     TargetResult,
     TargetResultError,
     from_json_dict,
@@ -83,6 +98,8 @@ RESULT_SUFFIX = "-result"
 #: Folder under an output folder with the runtime records and the launcher logs.
 RUNTIME_DIR = progress_reader.LOG_DIR
 LAUNCHER_LOG_GLOB = "explore-launcher-*.log"
+#: ``explore-launcher-<UTC start>-<pid>.log`` (``drivers.progress``; none in STREAM mode).
+_LAUNCHER_LOG_START = re.compile(r"^explore-launcher-(\d{8}T\d{6}Z)-\d+\.log$")
 #: How often node-tar's live folder is copied to the host (``LivePuller`` default): a snapshot older
 #: than a few of these while the run says ``running`` is stale, not slow.
 LIVE_PULL_INTERVAL_SECONDS = 15.0
@@ -93,6 +110,48 @@ class RunKind(StrEnum):
     EXPLORE = "explore"
     VERIFY = "verify"
     REPLAY = "replay"
+
+
+#: Seconds a live launcher can go without writing its log. The longest silent phase it allows is
+#: one image build: ``docker build --quiet`` prints only when it finishes and the launcher's own
+#: deadline for it is ``DEADLINE_BUILD=1800`` (``scripts/launcher_bounded.sh``, D049 condition 3);
+#: a build past that deadline is ended and logged. Every other phase is shorter (pip 300 s, copy
+#: 300 s) and the campaign writes a line per step (extractor timeout 10 s). Observed on HOST4
+#: (QA, 2026-11-20, python-tarfile 3.12.16, budget 20, warm images): the whole run took 54 s, the
+#: quietest stretch (preparing the controller) was under 28 s and steps came about every 1.3 s.
+#: 120 s of slack on top of the build deadline; ``tests/test_app_runs.py`` pins it to the script.
+LAUNCHER_QUIET_MAX_SECONDS = 1800 + 120
+
+
+class LaunchActivity(StrEnum):
+    """What the launcher log's last write says about a run seen only through it (an estimate)."""
+
+    #: written within :data:`LAUNCHER_QUIET_MAX_SECONDS`: launching or running
+    ACTIVE = "active"
+    #: quiet for longer than any phase a live launcher allows: it ended without its record
+    #: (killed, host restarted) or is stuck; not counted as running
+    NO_ACTIVITY = "no_activity"
+
+
+@dataclass(frozen=True, slots=True)
+class LauncherState:
+    """An id-less run's state, estimated from its launcher log (``estimated`` is always True)."""
+
+    activity: LaunchActivity
+    #: epoch seconds of the launcher log's last write (its mtime)
+    last_write: float
+    #: seconds from ``last_write`` to when the snapshot was read
+    age_seconds: float
+    log: Path
+    estimated: bool = True
+
+
+def launcher_activity(last_write: float, now: float) -> LaunchActivity:
+    """ACTIVE when the log was written within :data:`LAUNCHER_QUIET_MAX_SECONDS` of ``now``."""
+    quiet = now - last_write
+    return (
+        LaunchActivity.ACTIVE if quiet <= LAUNCHER_QUIET_MAX_SECONDS else LaunchActivity.NO_ACTIVITY
+    )
 
 
 class Source(StrEnum):
@@ -256,10 +315,18 @@ class CaseRow:
     input_path: Path | None = None
     recorded_at: str | None = None
     source: Source = Source.RESULT
+    #: the row is a known hand-built fixture of a ``fixture-regression`` result (a verify cell, a
+    #: controlled reproduction), not a case an exploration produced; ``finding`` is then ``None``
+    known_fixture: bool = False
 
     @property
     def violated(self) -> bool:
         return True in (self.c0, self.c1, self.c2)
+
+    @property
+    def fixture_violation(self) -> bool:
+        """A known fixture the oracle flagged (controlled check; never a candidate)."""
+        return self.known_fixture and self.violated
 
     @property
     def contracts(self) -> dict[str, bool | None]:
@@ -318,6 +385,16 @@ class RunSummary:
     def has_values(self) -> bool:
         """Values were read: validated (``OK``) or as stored (``UNVALIDATED``, show the mark)."""
         return self.read_state in (ReadState.OK, ReadState.UNVALIDATED)
+
+    @property
+    def candidates(self) -> tuple[CaseRow, ...]:
+        """Exploration cases the oracle flagged (each a :class:`FindingClass`)."""
+        return tuple(row for row in self.cases if row.finding is not None)
+
+    @property
+    def fixture_violations(self) -> tuple[CaseRow, ...]:
+        """Known fixtures the oracle flagged (``fixture-regression`` results only)."""
+        return tuple(row for row in self.cases if row.fixture_violation)
 
 
 @dataclass(frozen=True, slots=True)
@@ -378,10 +455,16 @@ class RunSnapshot:
     read_at: float
     progress: RunProgress | None = None
     summary: RunSummary | None = None
+    #: exploration candidates only (rows with a :class:`FindingClass`)
     findings: tuple[CaseRow, ...] = ()
     replays: tuple[ReplayRecord, ...] = ()
     read_errors: tuple[str, ...] = ()
     launcher_log: Path | None = None
+    #: known fixtures the oracle flagged (a verify cell's controlled check; not candidates)
+    fixture_violations: tuple[CaseRow, ...] = ()
+    #: only for an exploration seen through its launcher log alone (``ref.run_id`` ``None``): its
+    #: state estimated from the log's last write. ``None`` for every other run.
+    launcher_state: LauncherState | None = None
 
     def progress_age(self, now: float | None = None) -> float | None:
         """Seconds since the progress snapshot's own ``updated_at`` (``None`` when unknown)."""
@@ -440,9 +523,17 @@ def _load_json(path: Path) -> tuple[Any, ReadState, str | None]:
 
 
 def _row_from_verdict(
-    case: CaseVerdict, inputs: Mapping[str, tuple[str, Path]], run: int | None
+    case: CaseVerdict,
+    inputs: Mapping[str, tuple[str, Path]],
+    run: int | None,
+    *,
+    known_fixture: bool = False,
 ) -> CaseRow:
-    """A result case as a row; judgment and the repro-check flag come from :class:`CaseVerdict`."""
+    """A result case as a row; judgment and the repro-check flag come from :class:`CaseVerdict`.
+
+    ``known_fixture``: the result is a ``fixture-regression`` one, so a violation is a known
+    fixture's controlled check, not a candidate (``finding`` stays ``None``).
+    """
     if case.is_run_error:
         judgment = Judgment.RUN_ERROR
     elif case.is_unjudged:
@@ -450,7 +541,7 @@ def _row_from_verdict(
     else:
         judgment = Judgment.JUDGED
     finding = None
-    if case.violated:
+    if case.violated and not known_fixture:
         finding = (
             FindingClass.CANDIDATE_NEEDS_REPRO_CHECK
             if case.needs_repro_check
@@ -471,6 +562,7 @@ def _row_from_verdict(
         tar_sha256=sha,
         input_path=path,
         source=Source.RESULT,
+        known_fixture=known_fixture,
     )
 
 
@@ -506,7 +598,9 @@ def _row_from_live_case(record: Mapping[str, Any], live_dir: Path) -> CaseRow:
         input_path=live_dir / folder / tar if folder and tar else None,
         recorded_at=_str(record.get("recorded_at")),
         source=Source.LIVE,
-        **contracts,
+        c0=contracts["c0"],
+        c1=contracts["c1"],
+        c2=contracts["c2"],
     )
 
 
@@ -562,7 +656,12 @@ def _summary_from_result(
 ) -> RunSummary:
     inputs = _inputs(data, path.parent)
     campaign = result.campaign
-    terminations = result.termination_counts
+    terminations: dict[str, int | None] = dict(result.termination_counts)
+    stored = campaign is not None and campaign.terminations is not None
+    if not stored and all(case.termination is None for case in result.cases):
+        # no aggregate and no case recorded how it ended (a verify cell): unknown, not zero
+        terminations = dict.fromkeys(TERMINATIONS)
+    known_fixture = result.mode is ResultMode.FIXTURE_REGRESSION
     return RunSummary(
         ref=ref,
         read_state=ReadState.OK,
@@ -577,18 +676,25 @@ def _summary_from_result(
         unjudged_steps=result.unjudged_steps,
         unjudged_ratio=result.unjudged_ratio,
         max_unjudged_ratio=campaign.max_unjudged_ratio if campaign else None,
-        terminations=dict(terminations),
-        no_extraction_warning=no_extraction_warning(terminations),
+        terminations=terminations,
+        no_extraction_warning=_warning(terminations),
         runs_to_first_violation=campaign.runs_to_first_violation if campaign else None,
         violation_capture=campaign.violation_capture if campaign else None,
         integrity=_integrity(data.get("provenance"), data.get("preparation"), inputs),
         preparation=data.get("preparation"),
         benign_control=data.get("benign_control"),
         cases=tuple(
-            _row_from_verdict(case, inputs, _run_number(case.case_id)) for case in result.cases
+            _row_from_verdict(case, inputs, _run_number(case.case_id), known_fixture=known_fixture)
+            for case in result.cases
         ),
         extras=extras,
     )
+
+
+def _warning(terminations: Mapping[str, int | None]) -> str | None:
+    """:func:`no_extraction_warning` over the known counts (``None`` when none is known)."""
+    known = {k: v for k, v in terminations.items() if v is not None}
+    return no_extraction_warning(known) if known else None
 
 
 def _summary_as_stored(
@@ -601,6 +707,7 @@ def _summary_as_stored(
     stored = campaign.get("terminations")
     terminations = {k: _int(v) for k, v in stored.items()} if isinstance(stored, Mapping) else {}
     verdict = data.get("verdict")
+    known_fixture = data.get("mode") == ResultMode.FIXTURE_REGRESSION.value
     rows = []
     for case in data.get("cases") or ():
         if not isinstance(case, Mapping) or not isinstance(case.get("case_id"), str):
@@ -614,8 +721,11 @@ def _summary_as_stored(
             termination=_str(case.get("termination")),
             observation_complete=_bool(case.get("observation_complete")),
         )
-        rows.append(_row_from_verdict(verdict_case, inputs, _run_number(case["case_id"])))
-    known_terminations = {k: v for k, v in terminations.items() if v is not None}
+        rows.append(
+            _row_from_verdict(
+                verdict_case, inputs, _run_number(case["case_id"]), known_fixture=known_fixture
+            )
+        )
     return RunSummary(
         ref=ref,
         read_state=ReadState.UNVALIDATED,
@@ -635,9 +745,7 @@ def _summary_as_stored(
         if isinstance(campaign.get("max_unjudged_ratio"), int | float)
         else None,
         terminations=terminations,
-        no_extraction_warning=no_extraction_warning(known_terminations)
-        if known_terminations
-        else None,
+        no_extraction_warning=_warning(terminations),
         runs_to_first_violation=_int(campaign.get("runs_to_first_violation")),
         violation_capture=campaign.get("violation_capture"),
         integrity=_integrity(data.get("provenance"), data.get("preparation"), inputs),
@@ -886,6 +994,8 @@ def discover_runs(
                     RunListing(folder, None, ReadState.UNREADABLE, str(error)),
                 )
                 continue
+            if ref is None and (folder / RUNTIME_DIR).is_dir():
+                ref = _launcher_only_run(folder)
             if ref is not None:
                 listing = RunListing(folder, ref, ReadState.OK)
                 found.setdefault(ref.key, (_mtime(folder), listing))
@@ -919,6 +1029,35 @@ def _latest_launcher_log(root: Path) -> Path | None:
     except OSError:
         return None
     return logs[-1] if logs else None
+
+
+def _launcher_only_run(folder: Path) -> RunRef | None:
+    """An exploration under ``folder`` that so far has written only its launcher log.
+
+    python-tarfile, decompress and oras-go write nothing under ``target-explore/`` until they end,
+    and the runtime record is written after the launcher's last line. So the newest launcher log
+    is a run in progress when no runtime record was written at or after its last write, and no
+    live folder or ``-result`` folder was written since it started (that run is listed by its own
+    folder: node-tar's live folder, or the result). The run id is not known until the end
+    (``run_id`` ``None``). A launch killed without its record stays listed like this.
+    """
+    log = _latest_launcher_log(folder)
+    match = _LAUNCHER_LOG_START.match(log.name) if log is not None else None
+    if log is None or match is None:
+        return None
+    started = datetime.strptime(match[1], "%Y%m%dT%H%M%SZ").replace(tzinfo=UTC).timestamp()
+    last_write = _mtime(log)
+    explore = folder / EXPLORE_DIR
+    try:
+        records = list((folder / RUNTIME_DIR).glob("*.json"))
+        written = [*explore.glob("*/live"), *explore.glob(f"*{RESULT_SUFFIX}")]
+    except OSError:
+        return None
+    if any(_mtime(record) >= last_write for record in records):
+        return None
+    if any(max(_mtime(p), _mtime(p / PROGRESS_FILE)) >= started for p in written):
+        return None
+    return RunRef(RunKind.EXPLORE, folder, None, run_id_derived=False)
 
 
 def _progress(counts: progress_reader.Counts, raw: Mapping[str, Any] | None, step: str | None):
@@ -982,17 +1121,19 @@ def read_run(ref: RunRef, *, now: float | None = None) -> RunSnapshot:
             progress = _progress_from_summary(summary)
         return RunSnapshot(
             ref, read_at, progress=progress, summary=replace(summary, ref=ref),
-            findings=tuple(row for row in summary.cases if row.finding is not None),
-            read_errors=tuple(errors),
+            findings=summary.candidates, read_errors=tuple(errors),
+            fixture_violations=summary.fixture_violations,
         )  # fmt: skip
     # explore
     base = ref.root / EXPLORE_DIR
     run_id = ref.run_id or ""
     result_dir = base / f"{run_id}{RESULT_SUFFIX}"
-    live_dirs = find_live_dirs(base / run_id) if (base / run_id).is_dir() else []
+    # an id-less run (seen only through its launcher log) has no folder of its own yet: never
+    # pick up another run's live or result folder for it
+    live_dirs = find_live_dirs(base / run_id) if run_id and (base / run_id).is_dir() else []
     live = live_dirs[0] if live_dirs else None
     summary = None
-    if (result_dir / RESULT_FILE).exists():
+    if run_id and (result_dir / RESULT_FILE).exists():
         summary = read_result(result_dir / RESULT_FILE, ref)
         if summary.error:
             errors.append(summary.error)
@@ -1042,6 +1183,20 @@ def read_run(ref: RunRef, *, now: float | None = None) -> RunSnapshot:
         replays=_replays_beside(replay_sources),
         read_errors=tuple(errors),
         launcher_log=log,
+        fixture_violations=summary.fixture_violations if summary is not None else (),
+        launcher_state=_launcher_state(log, read_at) if not run_id and log is not None else None,
+    )
+
+
+def _launcher_state(log: Path, now: float) -> LauncherState | None:
+    last_write = _lstat_mtime(log)
+    if last_write is None:
+        return None
+    return LauncherState(
+        activity=launcher_activity(last_write, now),
+        last_write=last_write,
+        age_seconds=max(now - last_write, 0.0),
+        log=log,
     )
 
 
@@ -1070,7 +1225,10 @@ def _progress_from_summary(summary: RunSummary) -> RunProgress:
             unjudged=summary.unjudged_steps,
             terminations=dict(summary.terminations),
         )
-    return _progress(counts, None, None)
+    progress = _progress(counts, None, None)
+    if summary.terminations and all(v is None for v in summary.terminations.values()):
+        progress = replace(progress, terminations=dict(summary.terminations))
+    return progress
 
 
 def read_verify(out_dir: Path) -> tuple[RunSummary, ...]:

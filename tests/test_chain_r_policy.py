@@ -7,7 +7,6 @@ by path; the only allowed change is the two added enum members below. Safeguard 
 import functools
 import hashlib
 import random
-import subprocess
 from pathlib import Path
 
 import pytest
@@ -49,20 +48,20 @@ def test_d062_effect_search_differs_from_bed077a_only_by_the_two_members() -> No
     assert hashlib.sha256(stripped.encode("utf-8")).hexdigest() == BED077A_EFFECT_SEARCH_SHA256
 
 
+#: Line count of the bed077a blob, so the line-diff check needs no git history (a shallow CI
+#: checkout has none; a check that skips there is no evidence).
+BED077A_EFFECT_SEARCH_LINES = 348
+
+
 def test_d062_effect_search_line_diff_against_the_bed077a_blob() -> None:
-    done = subprocess.run(
-        ["git", "-C", str(ROOT), "show", "bed077a:src/inodefence/feedback/effect_search.py"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if done.returncode != 0:  # no history in this checkout: the sha256 test above still binds
-        pytest.skip("bed077a is not in this checkout's history")
-    old = done.stdout.splitlines(keepends=True)
+    # With the sha256 test above (the file minus the two members is the bed077a blob byte for
+    # byte), this pins the diff without history: the two members are adjacent, in order, each
+    # once, and nothing else was added or removed.
     new = EFFECT_SEARCH.read_text(encoding="utf-8").splitlines(keepends=True)
     position = new.index(ADDED_LINES[0])
-    assert new[:position] + new[position + 2 :] == old
     assert new[position : position + 2] == list(ADDED_LINES)
+    assert [line for line in new if line in ADDED_LINES] == list(ADDED_LINES)
+    assert len(new) == BED077A_EFFECT_SEARCH_LINES + len(ADDED_LINES)
 
 
 def test_chain_members_and_their_maximum_attempts() -> None:

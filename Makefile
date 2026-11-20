@@ -14,7 +14,7 @@ DEMO_OUT ?= $(or $(INODEFENCE_RUNTIME_ROOT),/var/lib/inodefence)/demo/effect-dem
 TAR_VERSION ?= 7.5.2
 HISTORICAL_IMAGE ?= inodefence-node-tar-effect:$(TAR_VERSION)
 
-.PHONY: install target-tools lint format-check typecheck test env-check docs-check evidence-chain check fixtures probe isolation-support node-entry-timing-probe node-tar-smoke node-tar-effect-check demo demo-native demo-synthetic demo-native-historical regression target-run replay paper-artifacts
+.PHONY: install target-tools lint format-check typecheck test env-check docs-check evidence-chain check fixtures probe isolation-support node-entry-timing-probe node-tar-smoke node-tar-effect-check demo demo-native demo-synthetic demo-native-historical regression target-run target-explore replay paper-artifacts
 
 target-tools:
 	npm ci --prefix tools/node-tar --ignore-scripts --no-audit --no-fund

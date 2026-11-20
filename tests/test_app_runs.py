@@ -145,14 +145,40 @@ def test_half_written_result_is_not_ready_not_an_error(tmp_path: Path) -> None:
     assert runs.read_result(foreign).read_state is ReadState.UNREADABLE
 
 
-def test_newer_campaign_keys_are_read_either_way(tmp_path: Path) -> None:
+def test_fields_the_strict_reader_knows_are_read_as_fields_not_extras(tmp_path: Path) -> None:
+    # Since #535 the reader knows campaign.mutation_policy and campaign.identity_checks; valid
+    # values are ordinary fields (validated, no extras).
+    from inodefence.mutator import MutationPolicy
+    from inodefence.target_result import FAST_ACCEPTANCE_NOT_MEASURED, per_case_identity_marker
+
     data = syn.result(cases=[syn.case("step-1", False)]).to_json_dict()
-    data["campaign"]["mutation_policy"] = "x"
-    data["campaign"]["identity_checks"] = {"interval": 1}
-    summary = runs.read_result(syn.write_result(tmp_path / "n", syn.result(),
+    data["campaign"]["mutation_policy"] = MutationPolicy.V2_FREEZE3_FIXED_BASELINE.value
+    data["campaign"]["identity_checks"] = per_case_identity_marker(
+        "decompress", FAST_ACCEPTANCE_NOT_MEASURED
+    )
+    summary = runs.read_result(syn.write_result(tmp_path / "k", syn.result(),
                                                 text=json.dumps(data)))  # fmt: skip
     assert summary.read_state is ReadState.OK and summary.validated
-    assert summary.extras == {"mutation_policy": "x", "identity_checks": {"interval": 1}}
+    assert summary.extras == {}
+
+
+def test_a_key_the_strict_reader_does_not_know_is_kept_in_extras(tmp_path: Path) -> None:
+    data = syn.result(cases=[syn.case("step-1", False)]).to_json_dict()
+    data["campaign"]["future_key"] = {"from": "a newer version"}
+    summary = runs.read_result(syn.write_result(tmp_path / "f", syn.result(),
+                                                text=json.dumps(data)))  # fmt: skip
+    assert summary.read_state is ReadState.OK and summary.validated
+    assert summary.extras == {"future_key": {"from": "a newer version"}}
+
+
+def test_an_invalid_known_record_or_derived_field_is_unvalidated(tmp_path: Path) -> None:
+    data = syn.result(cases=[syn.case("step-1", False)]).to_json_dict()
+    data["campaign"]["identity_checks"] = {"interval": 1}  # no total_checks, not a D065 marker
+    bad = runs.read_result(syn.write_result(tmp_path / "b", syn.result(),
+                                            text=json.dumps(data)))  # fmt: skip
+    assert bad.read_state is ReadState.UNVALIDATED and not bad.validated
+    assert bad.error and "identity_checks" in bad.error  # the reader's own reason
+    del data["campaign"]["identity_checks"]
     data["runs"]["executed"] = 99  # a derived field the strict reader refuses
     refused = runs.read_result(syn.write_result(tmp_path / "m", syn.result(),
                                                 text=json.dumps(data)))  # fmt: skip
@@ -406,3 +432,182 @@ def test_a_summary_carries_the_result_files_mtime(tmp_path: Path) -> None:
     linked.mkdir()
     os.symlink(path, linked / "result.json")
     assert runs.read_result(linked / "result.json").result_mtime is None  # a link is not followed
+
+
+def test_the_535_fields_read_ok(tmp_path: Path) -> None:
+    # #535 shapes, built with main's own constants: a node-tar interval record with its scope
+    # label, and a replay whose rounds carry additive-detector columns.
+    from tests.test_fast_identity_driver import RECORD
+
+    from inodefence.target_result import FAST_ACCEPTANCE_PASSED, NODE_TAR_ACCEPTED_FAST_SCOPE
+
+    data = syn.result(cases=[syn.case("step-1", False)]).to_json_dict()
+    data["campaign"]["identity_checks"] = {
+        **RECORD,
+        "fast_acceptance": FAST_ACCEPTANCE_PASSED,
+        "acceptance_scope": NODE_TAR_ACCEPTED_FAST_SCOPE,
+    }
+    summary = runs.read_result(syn.write_result(tmp_path / "s", syn.result(),
+                                                text=json.dumps(data)))  # fmt: skip
+    assert summary.read_state is ReadState.OK and summary.validated and summary.extras == {}
+    case_dir = tmp_path / "violations" / "run-000001"
+    case_dir.mkdir(parents=True)
+    path = syn.replay(case_dir, {"c0": False, "c1": True, "c2": False}, [syn.judged_round(True)])
+    record = json.loads(path.read_text(encoding="utf-8"))
+    record["rounds"][0]["additive_detectors"] = {"family": "additive-detectors-v1 (record-only)"}
+    record["summary"]["fingerprints_comparable"] = False
+    record["summary"]["same_fingerprints"] = None
+    path.write_text(json.dumps(record), encoding="utf-8")
+    replay = runs.read_replay(path)
+    assert replay.read_state is ReadState.OK and replay.same_fingerprints is None  # not 0
+
+
+# -- QA real-run defects on #549 candidate 02554c7 (D2, D3, candidate vs known fixture) ------------
+
+
+def _fixture_cell(tmp_path: Path, *, termination: str | None) -> Path:
+    cell = tmp_path / "verify" / "node-tar-7.5.2"
+    cases = [syn.case("toplevel_hardlink", True, termination=termination),
+             syn.case("dir_symlink_write", False, termination=termination)]  # fmt: skip
+    return syn.write_result(cell, syn.result(mode=syn.ResultMode.FIXTURE_REGRESSION, cases=cases))
+
+
+def test_a_verify_cell_without_terminations_reports_them_unknown_not_zero(tmp_path: Path) -> None:
+    path = _fixture_cell(tmp_path, termination=None)
+    summary = runs.read_result(path)
+    assert summary.read_state is ReadState.OK
+    assert dict(summary.terminations) == dict.fromkeys(
+        ("success", "rejected", "failed", "timed_out")
+    )
+    assert summary.no_extraction_warning is None
+    snapshot = runs.read_run(runs.RunRef(runs.RunKind.VERIFY, path.parent, path.parent.name))
+    assert snapshot.progress is not None
+    assert all(v is None for v in snapshot.progress.terminations.values())
+
+
+def test_recorded_terminations_are_still_counted(tmp_path: Path) -> None:
+    summary = runs.read_result(_fixture_cell(tmp_path, termination="success"))
+    assert summary.terminations["success"] == 2 and summary.terminations["failed"] == 0
+
+
+def test_a_fixture_regression_violation_is_a_known_fixture_not_a_candidate(tmp_path: Path) -> None:
+    path = _fixture_cell(tmp_path, termination=None)
+    summary = runs.read_result(path)
+    hardlink = next(row for row in summary.cases if row.case_id == "toplevel_hardlink")
+    assert hardlink.violated and hardlink.known_fixture and hardlink.fixture_violation
+    assert hardlink.finding is None  # never a candidate, so never "needs repro check"
+    assert summary.candidates == () and [r.case_id for r in summary.fixture_violations] == [
+        "toplevel_hardlink"
+    ]
+    snapshot = runs.read_run(runs.RunRef(runs.RunKind.VERIFY, path.parent, path.parent.name))
+    assert snapshot.findings == ()
+    assert [r.case_id for r in snapshot.fixture_violations] == ["toplevel_hardlink"]
+
+
+def test_the_classification_follows_the_mode_even_when_unvalidated(tmp_path: Path) -> None:
+    path = _fixture_cell(tmp_path, termination=None)
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["runs"]["executed"] = 99  # refused by the strict reader: values as stored
+    path.write_text(json.dumps(data), encoding="utf-8")
+    summary = runs.read_result(path)
+    assert summary.read_state is ReadState.UNVALIDATED
+    assert summary.candidates == () and len(summary.fixture_violations) == 1
+
+
+def test_an_exploration_violation_is_still_a_candidate(tmp_path: Path) -> None:
+    res = syn.result(cases=[syn.case("step-1", True)])
+    summary = runs.read_result(syn.write_result(tmp_path / "e", res))
+    assert [row.finding for row in summary.candidates] == [runs.FindingClass.CANDIDATE]
+    assert summary.fixture_violations == ()
+
+
+def _launcher_log(out: Path, stamp: str = "20261120T021743Z") -> Path:
+    log = out / runs.RUNTIME_DIR / f"explore-launcher-{stamp}-4242.log"
+    log.parent.mkdir(parents=True, exist_ok=True)
+    log.write_text("==> [preflight]\n==> [python-tarfile-effect-campaign]\n", encoding="utf-8")
+    return log
+
+
+def test_a_run_with_only_its_launcher_log_is_listed_as_running(tmp_path: Path) -> None:
+    out = tmp_path / "pt-out"
+    _launcher_log(out)
+    refs = [listing.ref for listing in runs.discover_runs([out]) if listing.ref]
+    assert [(r.kind, r.root, r.run_id) for r in refs] == [(runs.RunKind.EXPLORE, out, None)]
+    snapshot = runs.read_run(refs[0])
+    assert snapshot.summary is None and snapshot.findings == ()
+    assert snapshot.progress is not None and snapshot.progress.source is runs.Source.LAUNCHER_LOG
+    assert snapshot.progress.launcher_step == "python-tarfile-effect-campaign"
+    assert snapshot.progress.runs is None  # unknown mid-run, never 0
+
+
+def test_the_launcher_only_listing_ends_with_the_runtime_record(tmp_path: Path) -> None:
+    out = tmp_path / "pt-out"
+    log = _launcher_log(out)
+    record = out / runs.RUNTIME_DIR / "py3.12.16-data-1-20-20261120T021743Z.json"
+    record.write_text("{}", encoding="utf-8")
+    later = log.stat().st_mtime + 1
+    os.utime(record, (later, later))
+    assert [listing.ref for listing in runs.discover_runs([out]) if listing.ref] == []
+
+
+def test_an_id_less_run_never_takes_an_older_runs_folders(tmp_path: Path) -> None:
+    out = syn.explore_out(tmp_path)
+    old = syn.run_id(1)
+    syn.live_run(out, old, [syn.step(1, c1=True)], close="finished")
+    syn.write_result(out / "target-explore" / f"{old}-result",
+                     syn.result(cases=[syn.case("step-1", True)]))  # fmt: skip
+    for folder in (out / "target-explore").rglob("*"):
+        os.utime(folder, (1_000_000_000, 1_000_000_000))  # written long before the new launch
+    _launcher_log(out)
+    pending = [x.ref for x in runs.discover_runs([out]) if x.ref and x.ref.run_id is None]
+    assert len(pending) == 1
+    snapshot = runs.read_run(pending[0])
+    assert snapshot.summary is None and snapshot.findings == ()
+
+
+def test_a_running_node_tar_run_is_not_listed_twice(tmp_path: Path) -> None:
+    out = syn.explore_out(tmp_path)
+    _launcher_log(out, stamp="20000101T000000Z")  # started before its live folder was written
+    syn.live_run(out, syn.run_id(1), [syn.step(1)])
+    refs = [x.ref for x in runs.discover_runs([out]) if x.ref]
+    assert [r.run_id for r in refs] == [syn.run_id(1)]
+
+
+def test_a_launcher_only_run_is_active_while_its_log_is_written(tmp_path: Path) -> None:
+    out = tmp_path / "pt-out"
+    log = _launcher_log(out)
+    (ref,) = [x.ref for x in runs.discover_runs([out]) if x.ref]
+    written = log.stat().st_mtime
+    snapshot = runs.read_run(ref, now=written + 30)
+    state = snapshot.launcher_state
+    assert state is not None and state.estimated and state.log == log
+    assert state.activity is runs.LaunchActivity.ACTIVE and state.age_seconds == pytest.approx(30)
+
+
+def test_a_launcher_only_run_gone_quiet_is_no_activity_not_running(tmp_path: Path) -> None:
+    out = tmp_path / "pt-out"
+    log = _launcher_log(out)
+    (ref,) = [x.ref for x in runs.discover_runs([out]) if x.ref]
+    later = log.stat().st_mtime + runs.LAUNCHER_QUIET_MAX_SECONDS + 1
+    state = runs.read_run(ref, now=later).launcher_state
+    assert state is not None and state.activity is runs.LaunchActivity.NO_ACTIVITY
+    assert (
+        runs.launcher_activity(0.0, runs.LAUNCHER_QUIET_MAX_SECONDS) is runs.LaunchActivity.ACTIVE
+    )
+
+
+def test_runs_with_their_own_folders_have_no_launcher_state(tmp_path: Path) -> None:
+    out = syn.explore_out(tmp_path)
+    _launcher_log(out, stamp="20000101T000000Z")
+    syn.live_run(out, syn.run_id(1), [syn.step(1)])
+    snapshot = runs.read_run(runs.RunRef(runs.RunKind.EXPLORE, out, syn.run_id(1)))
+    assert snapshot.launcher_state is None
+
+
+def test_the_quiet_limit_follows_the_launchers_build_deadline() -> None:
+    import re
+
+    script = Path(__file__).resolve().parents[1] / "scripts" / "launcher_bounded.sh"
+    match = re.search(r"^DEADLINE_BUILD=(\d+)", script.read_text(encoding="utf-8"), re.M)
+    assert match is not None
+    assert runs.LAUNCHER_QUIET_MAX_SECONDS == int(match[1]) + 120

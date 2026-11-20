@@ -16,7 +16,8 @@ Per (target, seed) group the gate checks:
   the same nonempty token pool (``vocabulary_pool_final``, reconstructed by the launcher from each
   cell's recorded name segments);
 * ``mutation_policy`` id, builder format id (``archive_format``) and arm identity (recorded
-  ``search_policy``), each three-valued -- ``equal`` / ``different`` / ``unverifiable``:
+  ``search_policy``, paired with ``exploration_policy`` when set), each three-valued --
+  ``equal`` / ``different`` / ``unverifiable``:
   - ids: every recording cell records exactly one id and all the same; fewer than two recording
     cells is unverifiable, never a pass;
   - arm identity: each recording cell records exactly one search policy and the arms of the group
@@ -91,13 +92,19 @@ def recorded_ids(
     ``mutation_policy``: the report's ``config.mutation_policy`` and every mutation step's
     ``mutation_attempt.mutation_policy``. ``archive_format``: every step record's
     ``archive_format`` (build-invalid records carry ``None`` and give no evidence).
-    ``search_policy``: the report's ``config.search_policy`` (step records do not carry it).
+    ``search_policy``: the report's ``config.search_policy`` (step records do not carry it),
+    paired with ``config.exploration_policy`` when one ran (#511): an exploration policy declares
+    S-u as its ``search_policy``, so the arm is identified by the pair, recorded as
+    ``<search_policy>+exploration=<exploration_policy>``.
     """
     found: set[str] = set()
     config = report.get("config") if report is not None else None
     if field in ("mutation_policy", "search_policy") and isinstance(config, Mapping):
         if config.get(field) is not None:
-            found.add(str(config[field]))
+            value = str(config[field])
+            if field == "search_policy" and config.get("exploration_policy") is not None:
+                value = f"{value}+exploration={config['exploration_policy']}"
+            found.add(value)
     for record in records:
         if field == "mutation_policy":
             attempt = record.get("mutation_attempt")

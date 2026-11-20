@@ -1,0 +1,104 @@
+"""Reduced image-identity checking for FAST exploration (#536 option 1).
+
+STRICT (the default, ``identity_schedule=None`` on a target) runs the image identity probe -- a
+separate disposable container that re-hashes the worker and target sources inside the image --
+before every archive execution, as the frozen runtime audit (#45) introduced it.
+
+A target given an :class:`IdentitySchedule` probes instead:
+
+* at the start: ``bind()`` already probed once to pin the identity (unchanged);
+* every ``interval``-th prepared case;
+* at the end: the campaign calls the target's ``verify_identity_at_end()``. A mismatch there
+  raises, and the caller marks the whole campaign invalid (fail-closed).
+
+What remains between probes differs by target (HOST4 QA, PR #535):
+
+* node-tar: the archive-run command carries the six expected hashes and the worker recomputes
+  the same identity in the same container before extracting (exit 3 -> "identity changed"), so
+  skipping the separate probe container loses no detection.
+* python-tarfile, decompress, oras-go: the archive-run command carries no expected hashes; between
+  probes the protection is the pinned image: every archive-run container is created from the
+  immutable ``sha256:`` image ID, the backend re-inspects that ID on every prepare and rejects a
+  different one, and containers run ``--read-only`` from a fresh filesystem, so the files the probe
+  hashes cannot differ between cases without the ID changing. A change is detected at the next
+  periodic or the end probe instead of at the case where it happened.
+
+Image contents and the probe implementation stay trusted, as before. Any failed probe, periodic
+or final, aborts the whole campaign, as a failed per-case probe does in STRICT.
+
+Isolation is unchanged: archive-run containers, their policy check and their removal are the
+backend's and run per case exactly as in STRICT. Replay always runs STRICT.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, replace
+from typing import Protocol
+
+DEFAULT_INTERVAL = 200
+
+
+@dataclass(eq=False, slots=True)
+class IdentitySchedule:
+    """Mutable per-campaign counter; one instance per bound target."""
+
+    interval: int = DEFAULT_INTERVAL
+    prepared: int = 0
+    periodic_checks: int = 0
+    end_checked: bool = False
+
+    def __post_init__(self) -> None:
+        if type(self.interval) is not int or self.interval < 1:
+            raise ValueError("identity check interval must be a positive integer")
+
+    def due(self) -> bool:
+        """Count one prepared case; True when this case must probe the image identity."""
+        self.prepared += 1
+        if self.prepared % self.interval == 0:
+            self.periodic_checks += 1
+            return True
+        return False
+
+    def record(self) -> dict[str, object]:
+        """What ran, for the campaign report and the runtime record."""
+        return {
+            "identity_checks": "campaign",
+            "interval": self.interval,
+            "cases_prepared": self.prepared,
+            "start_checks": 1,
+            "periodic_checks": self.periodic_checks,
+            "end_checks": 1 if self.end_checked else 0,
+            "total_checks": 1 + self.periodic_checks + (1 if self.end_checked else 0),
+            # STRICT would have probed before each of these cases as well.
+            "per_case_checks_skipped": self.prepared - self.periodic_checks,
+        }
+
+
+class _Scheduled(Protocol):
+    def verify_identity_at_end(self) -> None: ...
+
+
+def apply_identity_schedule[T](target: T, every: int | None) -> tuple[T, IdentitySchedule | None]:
+    """Give a freshly bound target the FAST schedule; ``every=None`` returns it unchanged."""
+    if every is None:
+        return target, None
+    schedule = IdentitySchedule(every)
+    return replace(target, identity_schedule=schedule), schedule  # type: ignore[type-var]
+
+
+def finish_identity_schedule(target: _Scheduled, schedule: IdentitySchedule | None) -> dict:
+    """End-of-campaign probe for FAST; returns the report entry. STRICT: ``{}``, no probe.
+
+    A mismatch raises from the target, so the caller's existing failure path ends the whole
+    campaign without a result (fail-closed).
+    """
+    if schedule is None:
+        return {}
+    target.verify_identity_at_end()
+    record = schedule.record()
+    # What a case between probes rests on: node-tar re-checks its six source hashes inside every
+    # archive container; the other targets have no per-case observation, only the campaign probes
+    # and the pinned image ID. No per-case record claims an observation that did not happen.
+    record["artifact_identity_basis"] = "campaign-probes"
+    record["per_case_identity_check"] = getattr(target, "PER_CASE_IDENTITY_CHECK", None)
+    return {"identity_checks": record}

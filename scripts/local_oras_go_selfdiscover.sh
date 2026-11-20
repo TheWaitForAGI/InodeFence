@@ -147,5 +147,6 @@ DEMO_ARGS=()
 [ -n "${DEMO_BUDGET:-}" ] && DEMO_ARGS+=(--budget "$DEMO_BUDGET")
 [ -n "${DEMO_MUTATION_POLICY:-}" ] && DEMO_ARGS+=(--mutation-policy "$DEMO_MUTATION_POLICY")
 [ -n "${ORAS_GO_ARTIFACT_LAYOUT:-}" ] && DEMO_ARGS+=(--oras-go-artifact-layout "$ORAS_GO_ARTIFACT_LAYOUT")
+[ -n "${DEMO_IDENTITY_CHECK_EVERY:-}" ] && DEMO_ARGS+=(--identity-check-every "$DEMO_IDENTITY_CHECK_EVERY")
 host --image "$IF_ORAS_GO_IMAGE" --evidence "$CONTROLLER_EVIDENCE" \
   ${DEMO_ARGS[@]+"${DEMO_ARGS[@]}"} oras-go-effect-campaign

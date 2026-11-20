@@ -125,5 +125,6 @@ DEMO_ARGS=(--runtime-version "$RUNTIME_VERSION" --extraction-filter "$EXTRACTION
 [ -n "${DEMO_BUDGET:-}" ] && DEMO_ARGS+=(--budget "$DEMO_BUDGET")
 [ -n "${DEMO_MUTATION_POLICY:-}" ] && DEMO_ARGS+=(--mutation-policy "$DEMO_MUTATION_POLICY")
 [ -n "${DEMO_POLICY:-}" ] && DEMO_ARGS+=(--policy "$DEMO_POLICY")
+[ -n "${DEMO_IDENTITY_CHECK_EVERY:-}" ] && DEMO_ARGS+=(--identity-check-every "$DEMO_IDENTITY_CHECK_EVERY")
 host --image "$IF_EXPLORE_IMAGE" --evidence "$CONTROLLER_EVIDENCE" \
   "${DEMO_ARGS[@]}" python-tarfile-effect-campaign

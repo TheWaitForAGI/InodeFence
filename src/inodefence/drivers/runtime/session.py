@@ -36,7 +36,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from inodefence.drivers.launcher import run_resources
+from inodefence.drivers.launcher import IDENTITY_CHECK_ENV, run_resources
 from inodefence.drivers.runtime import diagnostics, shared_images
 from inodefence.drivers.runtime.hooks import (
     Finding,
@@ -147,6 +147,13 @@ class RuntimeSession:
         applied: dict[str, Any] = {}
         if self.policy.reuse_shared_images:
             env, applied = self._reuse_shared_images(script, args, runner, env, kwargs)
+        if self.policy.identity_check_every is not None and self.kind == "explore":
+            # FAST (#536 option 1): this launch only, not a build-only run before it.
+            env = {**env, IDENTITY_CHECK_ENV: str(self.policy.identity_check_every)}
+            applied["identity_check_every"] = {
+                "applied": True,
+                "detail": f"{IDENTITY_CHECK_ENV}={self.policy.identity_check_every}",
+            }
         record = self._record(script, args, env, artifacts)
         record.policy_applied = applied
         done = self._run(record, script, args, runner, env, kwargs)

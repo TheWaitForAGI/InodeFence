@@ -16,6 +16,13 @@ rebuild is a fixed cost per run of about 1.5 s (2.78 s -> 1.33 s before the cont
 5 interleaved runs each); nothing per case changes. The per-case cost (Docker
 calls of the isolation layer) and the controller's per-run ``pip install`` are outside what a
 host-side profile may touch and are unchanged.
+
+FAST also sets ``identity_check_every`` (#536 option 1, approved by Jiwoong 2026-11-18, see the
+decision in docs/DECISIONS.md): the launch gets ``DEMO_IDENTITY_CHECK_EVERY=<N>`` and the targets
+re-run their image identity probe at bind, every N-th case and at the end of the campaign instead
+of before every case (``inodefence.targets.identity_schedule``). The target containers, their
+isolation and the verdicts are unchanged; an end probe that fails voids the campaign. Its measured
+effect is recorded once measured (#536); until then nothing claims a speed-up from it.
 """
 
 from __future__ import annotations
@@ -37,18 +44,30 @@ class RuntimePolicy:
     #: Launch with ``SKIP_BUILD=1`` when the shared controller / helper images are verified to be
     #: this checkout's (``runtime.shared_images``); otherwise build them first, or say why not.
     reuse_shared_images: bool = False
+    #: Probe the target image identity every N-th case (plus bind and end) instead of before every
+    #: case; ``None``: before every case (STRICT). Passed as ``DEMO_IDENTITY_CHECK_EVERY``.
+    identity_check_every: int | None = None
 
-    def flags(self) -> dict[str, bool]:
+    def flags(self) -> dict[str, bool | int]:
         """The flags this policy sets, by name, for the runtime record (STRICT sets none)."""
         return {
-            item.name: True
+            item.name: value
             for item in fields(self)
-            if item.name != "profile" and getattr(self, item.name) is True
+            if item.name != "profile"
+            and (value := getattr(self, item.name)) is not None
+            and value is not False
         }
 
 
 STRICT = RuntimePolicy(RuntimeProfile.STRICT)
-FAST = RuntimePolicy(RuntimeProfile.FAST, reuse_shared_images=True)
+#: FAST's identity probe interval: the targets' ``identity_schedule.DEFAULT_INTERVAL`` (W5's
+#: draft, before W1's measurement); a test keeps the two in step once both are on the branch.
+FAST_IDENTITY_CHECK_EVERY = 200
+FAST = RuntimePolicy(
+    RuntimeProfile.FAST,
+    reuse_shared_images=True,
+    identity_check_every=FAST_IDENTITY_CHECK_EVERY,
+)
 
 #: The profiles a user may select (``inodefence explore --profile``), by name.
 PROFILES: dict[str, RuntimePolicy] = {

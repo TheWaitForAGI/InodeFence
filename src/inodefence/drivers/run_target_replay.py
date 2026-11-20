@@ -157,6 +157,10 @@ def engine_commit() -> str | None:
     return f"{sha}-dirty" if dirty else sha
 
 
+#: D-258: the one target whose replay can record the additive detectors' column.
+ADDITIVE_DETECTOR_TARGET = "node-tar"
+
+
 def main(argv: list[str] | None = None, *, runner=subprocess.run) -> int:
     parser = RefusalParser(
         prog="inodefence replay",
@@ -184,6 +188,12 @@ def main(argv: list[str] | None = None, *, runner=subprocess.run) -> int:
         action="store_true",
         help="check everything (input, image, support) and print the plan; run nothing",
     )
+    parser.add_argument(
+        "--additive-detectors",
+        action="store_true",
+        help="node-tar only, record-only: each judged round also records the two additive "
+        "detectors' counts (candidate signals, not verdicts); off by default",
+    )
     args = parser.parse_args(argv)
     require_repository_or_exit(parser, 3)
 
@@ -202,6 +212,16 @@ def main(argv: list[str] | None = None, *, runner=subprocess.run) -> int:
     if request.target not in TARGETS:
         print(f"REPLAY REFUSED: unknown target {request.target!r}", file=sys.stderr)
         return 2
+    if args.additive_detectors:
+        # D-258: a record-only column for node-tar replay; refused before anything runs.
+        if request.target != ADDITIVE_DETECTOR_TARGET:
+            print(
+                f"REPLAY REFUSED: --additive-detectors is available for "
+                f"{ADDITIVE_DETECTOR_TARGET} replay only, not {request.target}",
+                file=sys.stderr,
+            )
+            return 3
+        request = dataclasses.replace(request, additive_detectors=True)
     adapter = load_adapter(request.target)
     lookup = local_image_lookup(request.image_id, runner)
     present = lookup.image_id

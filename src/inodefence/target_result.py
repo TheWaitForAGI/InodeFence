@@ -223,6 +223,9 @@ class CampaignInfo:
     ``seed`` is the RNG seed. ``budget`` is the execution budget, or ``None`` for a run with no
     fixed cap (``run until stopped``). ``runs_to_first_violation`` is the 1-based run index of the
     first case that violated an observed contract, or ``None`` when none did.
+    `runs_to_first_violation` and every case run index count recorded steps, build-invalid steps
+    included (D060: each spends one budget unit), not extractions. A target whose loop extracts
+    fewer times than it steps still counts steps.
 
     The remaining fields let a large or unbounded campaign keep aggregates without listing every
     run in ``cases`` (``cases`` may then hold only the violations, or be empty). All are optional
@@ -266,6 +269,19 @@ class CampaignInfo:
     #: and ``dropped = total - retained`` the ones the per-fingerprint cap held back. ``None`` on a
     #: non-streaming or no-violation run, so older/fixture results serialize byte-identically.
     violation_capture: dict[str, Any] | None = None
+    #: v2 grammar exploration only: runs whose child the TAR builder could not represent, so
+    #: nothing was extracted (a budget unit, never un-judged; D060). Counted in ``runs_executed``
+    #: and left out of the un-judged ratio's denominator (see
+    #: :attr:`TargetResult.extraction_runs`). ``None`` (the key absent) when there were none, so
+    #: every other result serializes byte-identically.
+    build_invalid: int | None = None
+    #: The mutation policy an exploration ran when it was chosen with ``--mutation-policy``
+    #: (checked against the loop's report); ``None`` (the key absent) for the target's default.
+    mutation_policy: str | None = None
+    #: FAST exploration only (#536 option 1): the loop's record of the image identity probes it
+    #: ran instead of one before every case (``interval``, ``total_checks``, ... as the targets'
+    #: ``identity_schedule`` writes it). ``None`` (the key absent): a probe before every case.
+    identity_checks: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -340,12 +356,28 @@ class TargetResult:
         return {name: sum(case.termination == name for case in self.cases) for name in TERMINATIONS}
 
     @property
+    def build_invalid(self) -> int:
+        """Runs with no extraction because the builder refused the child (v2 only; else 0)."""
+        if self.campaign is not None and self.campaign.build_invalid is not None:
+            return self.campaign.build_invalid
+        return 0
+
+    @property
+    def extraction_runs(self) -> int:
+        """Runs that reached the extractor: ``executed`` minus build-invalid runs."""
+        return self.executed - self.build_invalid
+
+    @property
     def unjudged_ratio(self) -> float:
-        """Fraction of executions that went un-judged, to 6 decimals; ``0.0`` when none ran."""
-        executed = self.executed
-        if executed == 0:
+        """Fraction of extraction runs that went un-judged, to 6 decimals; ``0.0`` when none ran.
+
+        The denominator leaves out build-invalid runs (nothing was extracted, so there was
+        nothing to judge); without them it is ``executed``, as before.
+        """
+        extracted = self.extraction_runs
+        if extracted == 0:
             return 0.0
-        return round(self.unjudged_steps / executed, 6)
+        return round(self.unjudged_steps / extracted, 6)
 
     @property
     def verdict(self) -> Verdict:
@@ -354,8 +386,8 @@ class TargetResult:
         keeps its rule unchanged: any run error is ERROR. Then any violation is FAIL, else PASS --
         except that a recorded benign control that did not extract makes that PASS an ERROR."""
         if self.mode is ResultMode.CAMPAIGN:
-            executed = self.executed
-            all_unjudged = executed > 0 and self.unjudged_steps == executed
+            extracted = self.extraction_runs
+            all_unjudged = extracted > 0 and self.unjudged_steps == extracted
             max_ratio = self.campaign.max_unjudged_ratio if self.campaign is not None else None
             over_ratio = max_ratio is not None and self.unjudged_ratio > max_ratio
             if all_unjudged or over_ratio:
@@ -437,6 +469,13 @@ class TargetResult:
             # serialize byte-identically.
             if self.campaign.violation_capture is not None:
                 data["campaign"]["violation_capture"] = self.campaign.violation_capture
+            # Likewise only when set: v1 and default-policy results are byte-identical.
+            if self.campaign.build_invalid is not None:
+                data["campaign"]["build_invalid"] = self.campaign.build_invalid
+            if self.campaign.mutation_policy is not None:
+                data["campaign"]["mutation_policy"] = self.campaign.mutation_policy
+            if self.campaign.identity_checks is not None:
+                data["campaign"]["identity_checks"] = self.campaign.identity_checks
         if self.benign_control is not None:
             b = self.benign_control
             data["benign_control"] = {
@@ -472,6 +511,151 @@ def _case_json(case: CaseVerdict) -> dict[str, Any]:
 def repro_input(case_id: str, tar_path: str, tar_bytes: bytes) -> ReproInput:
     """Describe a TAR input saved at ``tar_path`` (relative), hashing its bytes."""
     return ReproInput(case_id, tar_path, sha256(tar_bytes).hexdigest())
+
+
+#: D065: the ``campaign.identity_checks`` record of a decompress/oras-go FAST run, which keeps
+#: the shared-image rebuild skip only and probes the image identity before every case.
+#: ``fast_acceptance`` values (INFRA's two-branch scope 771669d5; names under W4 review, so every
+#: reader takes them from here). The rule they share is the marker's: a probe per case.
+#: No FAST acceptance measurement exists (decompress, oras-go).
+FAST_ACCEPTANCE_NOT_MEASURED = "not_measured"
+#: The rule fixed before the run (compare exit 0) was met, but every run had 0 violations, so there
+#: is no evidence for violation paths (python-tarfile).
+FAST_ACCEPTANCE_CRITERION_MET_NO_VIOLATION_PATHS = "criterion_met_no_violation_path_evidence"
+#: node-tar's follow-up measurement result; set in ONE place when the result is in.
+FAST_ACCEPTANCE_INDETERMINATE_F3 = "indeterminate_f3"
+FAST_ACCEPTANCE_FAILED = "failed"
+#: A FAST run WITH the D064 interval (W4 Q2 (ii), scope-conditional): ``passed`` only when the
+#: run is inside the scope the acceptance measured; any other run keeps the interval but says
+#: so with ``interval_on_unmeasured_scope``. Both carry the measured scope.
+FAST_ACCEPTANCE_PASSED = "passed"
+FAST_ACCEPTANCE_INTERVAL_ON_UNMEASURED_SCOPE = "interval_on_unmeasured_scope"
+INTERVAL_ACCEPTANCE_STATES = (
+    FAST_ACCEPTANCE_PASSED,
+    FAST_ACCEPTANCE_INTERVAL_ON_UNMEASURED_SCOPE,
+)
+#: The node-tar FAST acceptance scope (W4 rule v3). ``counted_seeds`` and ``rule_sha`` come with
+#: the follow-up result and are filled here, in this one place; a test fails while they are
+#: empty, so this branch cannot ship unfilled. Follow-up measurement (2026-11-19, HOST1): 5
+#: counted seeds (58005, 58006, 58009, 58010, 58014), every compare exit 0, 0/2000 steps diverged.
+#: ``rule_sha`` is the SHA-256 of W4 rule v3's start-frozen file (checked by IF-H4-ORCH).
+NODE_TAR_ACCEPTED_FAST_SCOPE: dict[str, Any] = {
+    "version": "7.5.2",
+    "policy": "default",
+    "budget": 2000,
+    "counted_seeds": [58005, 58006, 58009, 58010, 58014],
+    "rule": "W4 v3",
+    "rule_sha": "37651dbeb2aa6e353732fdb6640b7e7f375aa50c91053d0598ab2f6af18417a0",
+}
+SCOPE_KEYS = ("version", "policy", "budget", "counted_seeds", "rule", "rule_sha")
+#: The fewest counted seeds a scope may name (W4 rule v3: N_min).
+SCOPE_MIN_COUNTED_SEEDS = 3
+
+
+def in_accepted_scope(scope: dict[str, Any], version: str, policy: str, budget: int) -> bool:
+    """Whether a run is inside the measured scope. The narrowest reading (decision pending,
+    W4): the exact version string, the exact policy name, the exact budget."""
+    return (version, policy, budget) == (scope["version"], scope["policy"], scope["budget"])
+
+
+PER_CASE_IDENTITY_MARKER: dict[str, Any] = {
+    "identity_checks": "per-case",
+    "interval": 1,
+    "fast_acceptance": FAST_ACCEPTANCE_NOT_MEASURED,
+    "acceptance_evidence": False,
+    "basis": "D065: decompress/oras-go FAST keeps reuse_shared_images only; "
+    "D064 interval not applied",
+}
+
+
+def per_case_identity_marker(target: str, fast_acceptance: str) -> dict[str, Any]:
+    """The D065 marker for ``target``: a probe per case, the target's FAST acceptance state.
+
+    decompress/oras-go (``not_measured``) get :data:`PER_CASE_IDENTITY_MARKER` unchanged. Any other
+    target or state gets the same record with its own ``fast_acceptance`` and a ``basis`` that
+    states the rule only (no acceptance wording).
+    """
+    if fast_acceptance == FAST_ACCEPTANCE_NOT_MEASURED and target in ("decompress", "oras-go"):
+        return dict(PER_CASE_IDENTITY_MARKER)
+    if not isinstance(fast_acceptance, str) or not fast_acceptance:
+        raise ValueError("fast_acceptance must be a non-empty string")
+    return {
+        **PER_CASE_IDENTITY_MARKER,
+        "fast_acceptance": fast_acceptance,
+        "basis": f"D065: {target} FAST keeps reuse_shared_images only; D064 interval not applied",
+    }
+
+
+def is_per_case_identity_marker(checks: object) -> bool:
+    """Whether ``checks`` is the D065 marker (no acceptance evidence, a probe per case)."""
+    return isinstance(checks, dict) and checks.get("acceptance_evidence") is False
+
+
+def _check_identity_checks(checks: object) -> None:
+    """A FAST record needs an integer interval and ``total_checks >= 1``. Only the D065 marker
+    (``acceptance_evidence: false``) may leave ``total_checks`` out, and then its interval must
+    be 1: nothing was counted, so no count is written."""
+    if is_per_case_identity_marker(checks):
+        assert isinstance(checks, dict)
+        if checks.get("interval") != 1 or type(checks["interval"]) is not int:
+            raise TargetResultError(
+                "campaign.identity_checks with acceptance_evidence false must have interval 1 "
+                "(a probe before every case)"
+            )
+        return
+    if isinstance(checks, dict) and ("fast_acceptance" in checks or "acceptance_scope" in checks):
+        _check_acceptance_scope(checks)
+    if (
+        not isinstance(checks, dict)
+        or type(checks.get("interval")) is not int
+        or checks["interval"] < 1
+        or type(checks.get("total_checks")) is not int
+        or checks["total_checks"] < 1
+    ):
+        raise TargetResultError(
+            "campaign.identity_checks must be absent or a record with integer interval and "
+            "total_checks >= 1"
+        )
+
+
+def _check_acceptance_scope(checks: dict[str, Any]) -> None:
+    """An interval record's scope label: both keys or neither (an older record has neither and
+    is read as unlabeled); a known state; the scope's fields."""
+    state, scope = checks.get("fast_acceptance"), checks.get("acceptance_scope")
+    if state not in INTERVAL_ACCEPTANCE_STATES:
+        raise TargetResultError(
+            f"campaign.identity_checks.fast_acceptance must be one of "
+            f"{INTERVAL_ACCEPTANCE_STATES} with an interval record"
+        )
+    if not isinstance(scope, dict) or tuple(sorted(scope)) != tuple(sorted(SCOPE_KEYS)):
+        raise TargetResultError(
+            f"campaign.identity_checks.acceptance_scope must hold exactly {SCOPE_KEYS}"
+        )
+    if not isinstance(scope["version"], str) or not isinstance(scope["policy"], str):
+        raise TargetResultError("acceptance_scope version and policy must be strings")
+    if type(scope["budget"]) is not int or scope["budget"] < 1:
+        raise TargetResultError("acceptance_scope budget must be a positive integer")
+    seeds, rule = scope["counted_seeds"], scope["rule_sha"]
+    # An unfilled scope (None) is refused: a record made from it must not exist. The seeds are
+    # listed, so the record alone names exactly which seeds and which rule the acceptance used.
+    if (
+        not isinstance(seeds, list)
+        or len(seeds) < SCOPE_MIN_COUNTED_SEEDS
+        or any(type(seed) is not int for seed in seeds)
+        or len(set(seeds)) != len(seeds)
+    ):
+        raise TargetResultError(
+            f"acceptance_scope counted_seeds must list at least {SCOPE_MIN_COUNTED_SEEDS} "
+            "distinct integer seeds"
+        )
+    if not isinstance(scope["rule"], str) or not scope["rule"]:
+        raise TargetResultError("acceptance_scope rule must name the rule")
+    if (
+        not isinstance(rule, str)
+        or len(rule) != 64
+        or any(c not in "0123456789abcdef" for c in rule)
+    ):
+        raise TargetResultError("acceptance_scope rule_sha must be a sha256 hex digest")
 
 
 def _validate(result: TargetResult) -> None:
@@ -567,10 +751,30 @@ def _validate_campaign(result: TargetResult) -> None:
         type(campaign.errors) is not int or not 0 <= campaign.errors <= executed
     ):
         raise TargetResultError("campaign.errors must be an integer in 0..runs")
+    build_invalid = campaign.build_invalid
+    if build_invalid is not None and (
+        type(build_invalid) is not int or not 1 <= build_invalid <= executed
+    ):
+        raise TargetResultError(
+            "campaign.build_invalid must be absent or an integer in 1..runs "
+            "(0 is written as absent)"
+        )
+    extracted = result.extraction_runs
+    mutation_policy = campaign.mutation_policy
+    if mutation_policy is not None and (
+        not isinstance(mutation_policy, str) or not mutation_policy
+    ):
+        raise TargetResultError("campaign.mutation_policy must be absent or a non-empty string")
+    checks = campaign.identity_checks
+    if checks is not None:
+        _check_identity_checks(checks)
     stored = campaign.unjudged_steps
     if stored is not None:
-        if type(stored) is not int or not 0 <= stored <= executed:
-            raise TargetResultError("campaign.unjudged_steps must be null or an integer in 0..runs")
+        if type(stored) is not int or not 0 <= stored <= extracted:
+            raise TargetResultError(
+                "campaign.unjudged_steps must be null or an integer in 0..runs "
+                "(build-invalid runs excluded)"
+            )
         listed_unjudged = sum(case.is_unjudged for case in result.cases)
         if stored < listed_unjudged:
             raise TargetResultError(
@@ -588,8 +792,10 @@ def _validate_campaign(result: TargetResult) -> None:
             raise TargetResultError(f"campaign.terminations keys must be from {TERMINATIONS}")
         if not all(type(n) is int and n >= 0 for n in terminations.values()):
             raise TargetResultError("campaign.terminations counts must be non-negative integers")
-        if sum(terminations.values()) > executed:
-            raise TargetResultError("campaign.terminations add up to more than the runs")
+        if sum(terminations.values()) > extracted:
+            raise TargetResultError(
+                "campaign.terminations add up to more than the runs (build-invalid runs excluded)"
+            )
         for name in TERMINATIONS:
             listed = sum(case.termination == name for case in result.cases)
             if terminations.get(name, 0) < listed:
@@ -671,6 +877,9 @@ _CAMPAIGN_OPTIONAL = {
     "unjudged_ratio",
     "terminations",
     "violation_capture",
+    "build_invalid",
+    "mutation_policy",
+    "identity_checks",
 }
 
 _BENIGN_CONTROL_KEYS = {"extracted", "expected_path", "tar_path", "tar_sha256", "detail"}
@@ -756,6 +965,9 @@ def from_json_dict(data: object) -> TargetResult:
             max_unjudged_ratio=campaign_block.get("max_unjudged_ratio"),
             terminations=campaign_block.get("terminations"),
             violation_capture=campaign_block.get("violation_capture"),
+            build_invalid=campaign_block.get("build_invalid"),
+            mutation_policy=campaign_block.get("mutation_policy"),
+            identity_checks=campaign_block.get("identity_checks"),
         )
     benign_control = None
     if "benign_control" in top:

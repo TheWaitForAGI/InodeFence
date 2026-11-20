@@ -22,6 +22,7 @@ from scripts.oracle_fixture_check import ORACLE_FIXTURES
 
 import inodefence.drivers.python_tarfile.producer as producer
 from inodefence.effect_pipeline_python_tarfile import run_python_tarfile_contained_case
+from inodefence.evaluation.execution_parity import EXCLUDED_OBJECT_FIELDS
 from inodefence.evaluation.rds import RdsArm, RdsCellConfig
 from inodefence.execution.base import ContainerOutcome, ExecutionBackend
 from inodefence.generator import minimal_seed_corpus
@@ -211,6 +212,74 @@ def test_exploration_runs_the_shared_loop_on_one_runtime_and_one_filter() -> Non
     assert len(report["violation_inputs"]) == sum(
         bool(r["c0"] or r["c1"] or r["c2"]) for r in report["case_records"]
     )
+
+
+def _without_raw_identity(value: object) -> object:
+    """``value`` with each step's raw object identity replaced by its sharing partition.
+
+    The fields ``execution_parity`` excludes as raw values (``EXCLUDED_OBJECT_FIELDS``: st_dev,
+    st_ino, mtime_ns, ctime_ns) are dropped from every observed object; the ``(st_dev, st_ino)``
+    pair is replaced by a label numbered in first-appearance order within the step, so paths that
+    share one inode still share one label (the C1-relevant partition), while the raw numbers --
+    which differ per filesystem -- do not enter the comparison. Everything else is compared as is.
+    """
+    if isinstance(value, list) and value and all(isinstance(item, dict) for item in value):
+        return [_relabel(item, {}) for item in value]
+    return _relabel(value, {})
+
+
+def _relabel(value: object, labels: dict[tuple[object, object], int]) -> object:
+    if isinstance(value, dict):
+        out = {
+            key: _relabel(item, labels)
+            for key, item in value.items()
+            if key not in EXCLUDED_OBJECT_FIELDS
+        }
+        if "st_ino" in value or "st_dev" in value:
+            identity = (value.get("st_dev"), value.get("st_ino"))
+            out["inode_class"] = labels.setdefault(identity, len(labels))
+        return out
+    if isinstance(value, list):
+        return [_relabel(item, labels) for item in value]
+    return value
+
+
+def test_fast_identity_schedule_same_steps_fewer_probes_and_recorded() -> None:
+    """#536: FAST probes start/every N/end; steps and verdicts equal STRICT on the same seed."""
+    budget = len(minimal_seed_corpus()) + 4
+    strict_backend, fast_backend = _LocalBackend(), _LocalBackend()
+    # The steps are streamed (#542): compare what each run hands the controller's .steps.jsonl.
+    strict_steps: list[dict[str, object]] = []
+    fast_steps: list[dict[str, object]] = []
+    strict = python_tarfile_exploration_report(
+        strict_backend, IMAGE, "data", RUNTIME, seed=7, budget=budget,
+        step_sink=strict_steps.append,
+    )  # fmt: skip
+    fast = python_tarfile_exploration_report(
+        fast_backend, IMAGE, "data", RUNTIME, seed=7, budget=budget, identity_check_every=3,
+        step_sink=fast_steps.append,
+    )  # fmt: skip
+    strict["steps"], fast["steps"] = strict_steps, fast_steps
+    assert len(strict_steps) == budget
+    assert "identity_checks" not in strict
+    record = fast.pop("identity_checks")
+    assert record["interval"] == 3 and record["end_checks"] == 1
+    assert record["artifact_identity_basis"] == "campaign-probes"
+    assert record["per_case_identity_check"] is None  # no per-case observation on python-tarfile
+    # Raw inode numbers, devices and times depend on the filesystem the local backend extracts
+    # on, so they are compared as the inode-sharing partition (QA check 44 follow-up), not raw.
+    for key in ("case_records", "steps", "retained_case_ids"):
+        assert _without_raw_identity(fast.get(key)) == _without_raw_identity(strict.get(key))
+    assert _without_raw_identity(fast["steps"]) != _without_raw_identity(fast["steps"][:-1])
+    # Not vacuous: the steps carry observed objects whose identity became a partition label.
+    assert "inode_class" in repr(_without_raw_identity(strict["steps"]))
+    assert "st_ino" in repr(strict["steps"])
+
+    def probes(backend: _LocalBackend) -> int:
+        return sum(1 for command in backend.commands if command[3] == "--identify")
+
+    assert probes(strict_backend) == 1 + budget
+    assert probes(fast_backend) == record["total_checks"] == 1 + budget // 3 + 1
 
 
 def test_all_steps_undetermined_is_flagged_not_a_pass() -> None:
@@ -418,16 +487,111 @@ def test_success_of_a_non_empty_archive_without_an_intact_trace_is_unjudged() ->
     assert case_record(0, result)["outcome"] == "judged"  # the intact trace stays judged
 
 
-def test_empty_archive_and_rejection_stay_judged_though_their_trace_is_incomplete() -> None:
+def _empty_case() -> ArchiveCase:
     from dataclasses import replace as dc_replace
 
-    empty_case = dc_replace(_FIX["normal"].case, entries=())
-    empty = run_python_tarfile_contained_case(empty_case, _target())
-    assert empty.trace.integrity_valid is False  # incomplete by construction: no entry
+    return dc_replace(_FIX["normal"].case, entries=())
+
+
+def test_empty_archive_success_is_complete_and_judged_and_rejection_stays_judged() -> None:
+    """#533: a zero-entry success whose worker reports ``members: 0`` is a complete trace (0/0),
+    judged, and valid in the report; a rejection before any entry stays judged as before."""
+    from inodefence.effect_demo import observer_integrity_validity
+
+    empty = run_python_tarfile_contained_case(_empty_case(), _target())
+    assert empty.base_result.execution.status is ExecutionStatus.SUCCESS
+    assert json.loads(empty.base_result.execution.stdout.splitlines()[-1])["members"] == 0
+    assert empty.trace.completeness is EffectStreamCompleteness.COMPLETE
+    assert empty.trace.integrity_valid is True
+    assert empty.trace.last_produced_sequence == -1  # nothing produced (the model's empty stream)
     assert case_record(0, empty)["outcome"] == "judged"
+    assert observer_integrity_validity(empty)["validity"] == "valid"
     rejected = run_python_tarfile_contained_case(_FIX["c1"].case, _target("data"))
     assert rejected.trace.integrity_valid is False
     assert case_record(0, rejected)["outcome"] == "judged"
+
+
+def test_a_success_without_a_readable_member_report_is_incomplete_even_with_zero_entries() -> None:
+    """#533 (W4): completeness needs the worker's own member count; an unreadable report is
+    ``None`` -> INCOMPLETE, for an empty archive too (it no longer passes as "0 of 0")."""
+    for case in (_empty_case(), _FIX["normal"].case):
+        result = run_python_tarfile_contained_case(
+            case, _target(backend=_LocalBackend(broken=True))
+        )
+        assert result.trace.completeness is EffectStreamCompleteness.INCOMPLETE
+        assert result.trace.integrity_valid is False
+
+
+@pytest.mark.parametrize("members", [None, 1])
+def test_reader_completeness_requires_the_worker_member_count_to_match(
+    members: int | None,
+) -> None:
+    from inodefence.targets.python_tarfile_effect import _build_trace
+
+    base = run_python_tarfile_contained_case(_empty_case(), _target()).base_result
+    root = Path(base.before.sandbox_root)
+
+    def trace(count: int | None):  # type: ignore[no-untyped-def]
+        return _build_trace(
+            base.before,
+            base.after,
+            (),
+            (),
+            ExecutionStatus.SUCCESS,
+            root,
+            root / "extract",
+            worker_members=count,
+        )
+
+    assert trace(0).completeness is EffectStreamCompleteness.COMPLETE
+    assert trace(members).completeness is EffectStreamCompleteness.INCOMPLETE
+
+
+def _zero_entry_rejection(empty) -> Any:  # type: ignore[no-untyped-def]
+    """A node-tar-7.5.23-shaped record of the same zero-entry input: rejected before any entry
+    (``TAR_BAD_ARCHIVE``), with a valid worker report -- synthetic, from the HOST4 zero-entry
+    check's fields (exit status, final line ``members: 0``, stderr); nothing is run."""
+    from dataclasses import replace as dc_replace
+
+    from inodefence.model import EffectRunResult, SnapshotPhase
+    from inodefence.targets.python_tarfile_contained import RUN_FORMAT
+    from inodefence.targets.python_tarfile_effect import _build_trace
+
+    base = empty.base_result
+    final = {"format": RUN_FORMAT, "status": "rejected", "members": 0}
+    execution = dc_replace(
+        base.execution,
+        status=ExecutionStatus.REJECTED,
+        exit_code=2,
+        stdout=json.dumps(final) + "\n",
+        stderr="TAR_BAD_ARCHIVE: Unrecognized archive format",
+    )
+    assert base.before.phase is SnapshotPhase.BEFORE
+    trace = _build_trace(
+        base.before,
+        base.after,
+        (),
+        (),
+        ExecutionStatus.REJECTED,
+        Path(base.before.sandbox_root),
+        Path(base.before.sandbox_root) / "extract",
+        worker_members=0,
+    )
+    return EffectRunResult(dc_replace(base, execution=execution), trace)
+
+
+def test_zero_entry_input_agrees_between_the_exploration_rule_and_report_validity() -> None:
+    """#533 (W4 7.2): without the empty-archive exception, the same zero-entry input gives the
+    same state on the exploration rule (case_record) and the report's validity, both for the
+    node-tar-shaped rejection and for the python-tarfile success."""
+    from inodefence.effect_demo import observer_integrity_validity
+
+    success = run_python_tarfile_contained_case(_empty_case(), _target())
+    rejection = _zero_entry_rejection(success)
+    for result in (success, rejection):
+        judged = case_record(0, result)["outcome"] == "judged"
+        valid = observer_integrity_validity(result)["validity"] == "valid"
+        assert judged and valid
 
 
 # ---- D1 regression matrix (user decision 2026-11-16, python-tarfile deviation) ----

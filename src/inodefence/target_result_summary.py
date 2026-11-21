@@ -473,9 +473,19 @@ def render_summary(result: TargetResult, *, source_name: str, inputs_verified: b
 
 
 def summarize_file(path: Path, *, verify_inputs: bool = True) -> str:
-    """Load ``path`` with the strict reader and render its one-page summary."""
+    """Load ``path`` with the strict reader and render its one-page summary.
+
+    The strict reader checks keys and derived fields, not the type of every value; a value of the
+    wrong shape it lets through (a number where a version string belongs) is reported as
+    :class:`TargetResultError`, never a traceback (#552).
+    """
     result = load_target_result(path, verify_inputs=verify_inputs)
-    return render_summary(result, source_name=path.name, inputs_verified=verify_inputs)
+    try:
+        return render_summary(result, source_name=path.name, inputs_verified=verify_inputs)
+    except (TypeError, AttributeError, KeyError, IndexError) as error:
+        raise TargetResultError(
+            f"malformed result: the summary cannot show a value: {type(error).__name__}: {error}"
+        ) from error
 
 
 SUMMARY_NAME = "summary.md"

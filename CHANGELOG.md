@@ -77,6 +77,12 @@
 - 새 선택 키가 든 `result.json`은 이 버전 이상의 `inodefence status`·`summary`로 읽는다([호환 약속](docs/USAGE.md#호환-약속)).
 
 ### 고친 문제
+- 모양이 틀린 `result.json`에서 명령이 Python traceback과 종료 1로 끝나던 문제
+  ([#552](https://github.com/TheWaitForAGI/InodeFence/issues/552)). `observed_contracts`가 수나 null이면 `status`와 `summary`가,
+  버전·이미지 칸이나 케이스의 `outcome`이 문자열이 아니면 `summary`가 그랬다. 이제 결과 읽기가 앞의 경우를 정해진 오류로
+  거절해 `status`는 `<경로>: unreadable (malformed result: …)`와 종료 2를 내고, `summary`는 두 경우 모두
+  `error: malformed result: …`와 종료 2를 낸다. 지금 읽히는 결과는 전과 같게 읽히고(엄격 읽기가 받아들이는 범위는 그대로),
+  판정·결과 형식·쓰는 쪽은 바뀌지 않는다.
 - `inodefence verify`·`explore`: `-`로 시작하는 `--image-tag-suffix`(예: `--image-tag-suffix=-win`)가 드라이버로 넘어가며
   두 인자로 나뉘어 실행 전에 거부되던 문제([#528](https://github.com/TheWaitForAGI/InodeFence/issues/528)). 이제 하나의
   값으로 전달된다. 공백 형식(`--image-tag-suffix -win`)은 여전히 받을 수 없고, 거부 메시지(종료 3)가 `=` 형식을 안내한다.

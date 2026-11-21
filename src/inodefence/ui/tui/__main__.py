@@ -16,7 +16,7 @@ from inodefence.ui.tui import TuiUnavailable, run
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="python -m inodefence.ui.tui",
-        description="Read-only dashboard of the run folders on this host.",
+        description="Dashboard of the run folders on this host; runs CLI commands on request.",
     )
     parser.add_argument("folders", nargs="*", type=Path, help="extra folders to read")
     parser.add_argument("--refresh", type=float, default=1.0, help="seconds between re-reads")

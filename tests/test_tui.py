@@ -357,7 +357,7 @@ async def test_keys_switch_screens_and_help(tmp_path: Path) -> None:
             assert app.query_one("#tabs", TabbedContent).active == tab
         await pilot.press("question_mark")
         await pilot.pause()
-        assert "read-only" in _text(app.screen, "#detail-body")
+        assert "only after Start" in _text(app.screen, "#detail-body")  # the run rule, said true
         await pilot.press("escape")
         await pilot.pause()
         assert app.screen is app.screen_stack[0]
@@ -580,3 +580,23 @@ async def test_the_tab_bar_fits_80_columns(tmp_path: Path) -> None:
         assert all(t.region.right <= 80 and t.region.width > 0 for t in tabs), [
             (str(t.label), t.region) for t in tabs
         ]
+
+
+@_sync
+async def test_a_launcher_only_row_goes_when_its_run_has_its_own_folder(tmp_path: Path) -> None:
+    # QA (#553): the TUI kept the "(no id yet)" row after the run's live folder appeared, so one
+    # node-tar run was counted twice ("active runs 2") and the row stayed after it ended.
+    out = syn.explore_out(tmp_path)
+    log = out / "runtime" / "explore-launcher-20000101T000000Z-1.log"
+    log.parent.mkdir(parents=True)
+    log.write_text("==> [run controller]\n", encoding="utf-8")
+    app = _app([out], syn.Clock(log.stat().st_mtime + 5))
+    async with app.run_test(size=(160, 48)) as pilot:
+        await _settle(app, pilot)
+        ids = [s.ref.run_id for s in app.state.snapshots.values()]
+        assert ids == [None]  # only the launcher log so far
+        syn.live_run(out, syn.run_id(1), [syn.step(1)])  # the run writes its own live folder
+        await _settle(app, pilot)
+        ids = [s.ref.run_id for s in app.state.snapshots.values()]
+        assert ids == [syn.run_id(1)]  # one row: the launcher-only one is gone
+        assert sum(model.is_active(s, app.state.now) for s in app.state.snapshots.values()) <= 1

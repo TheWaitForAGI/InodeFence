@@ -1,11 +1,13 @@
-"""The Textual dashboard: a tiled, read-only monitor over :mod:`inodefence.app` (see ``model.py``).
+"""The Textual dashboard: a tiled monitor over :mod:`inodefence.app` (see ``model.py``) that can run
+the CLI's commands.
 
 Overview is a tiled screen: the selected campaign (an observed-throughput graph and its numbers),
 outcomes and oracle panels, targets, the run list with recent candidates, and the event stream --
 all drawn from real values (a graph with no observed samples is not drawn). Targets, Campaigns,
 Findings and Artifacts use the same panel grammar (titled borders, bars, badges). Nothing here
-parses a run file or decides a verdict, and keys only move around: nothing is started, stopped,
-deleted or written.
+parses a run file or decides a verdict. ``n`` (and the shortcuts) run an ``inodefence`` command
+through :mod:`inodefence.ui.tui.launch` -- one that starts Docker only after a confirmation;
+nothing is stopped, deleted or written by the screen itself.
 """
 
 from __future__ import annotations
@@ -28,10 +30,22 @@ from textual.widgets import DataTable, Footer, Static, TabbedContent, TabPane
 
 from inodefence.app.events import EventKind, RunFollower, UiEvent
 from inodefence.app.runs import RunSnapshot, default_roots, discover_runs
-from inodefence.ui.tui import model
+from inodefence.ui.tui import launch, model
+from inodefence.ui.tui.forms import CommandForm, command_forms
 from inodefence.ui.tui.model import Cell, DashboardState, Row, Sample
 from inodefence.ui.tui.palette import BAR_HIGH, BAR_LOW, BAR_MID, DEEP, PALETTE, PANEL
 from inodefence.ui.tui.palette import TITLE as TITLE_COLOUR
+from inodefence.ui.tui.screens_run import (
+    BUDGET_RECONFIRM,
+    RUN_CSS,
+    CommandFormScreen,
+    CommandPicker,
+    ConfirmScreen,
+    LaunchesScreen,
+    OutputScreen,
+    confirm_notes,
+    out_folder,
+)
 
 COLOURS = {
     model.OK: PALETTE["ok"],
@@ -170,7 +184,7 @@ def _panel(widget_id: str, title: str) -> Static:
 
 class InodeFenceTui(App[None]):
     TITLE = "InodeFence"
-    #: read-only screen: no command palette (its built-in commands are not needed here)
+    #: no command palette: its built-in commands are not needed here (``n`` runs the CLI's)
     ENABLE_COMMAND_PALETTE = False
     CSS = f"""
     Screen {{ background: {DEEP}; color: {PALETTE["text"]}; }}
@@ -224,12 +238,23 @@ class InodeFenceTui(App[None]):
                padding: 0 1; }}
     Footer {{ background: {PALETTE["surface_alt"]}; }}
     """
+    CSS += RUN_CSS
+
     BINDINGS = [
         Binding("1", "show('overview')", "Overview"),
         Binding("2", "show('targets')", "Targets"),
         Binding("3", "show('campaigns')", "Campaigns"),
         Binding("4", "show('findings')", "Flagged cases"),
         Binding("5", "show('artifacts')", "Artifacts"),
+        Binding("n", "new_command", "Run…"),
+        Binding("l", "launches", "My commands"),
+        # shortcuts into a form filled from the highlighted row (listed in help; footer stays short)
+        Binding("v", "shortcut('verify')", "verify", show=False),
+        Binding("e", "shortcut('explore')", "explore", show=False),
+        Binding("p", "shortcut('replay')", "replay", show=False),
+        Binding("s", "shortcut('status')", "status", show=False),
+        Binding("m", "shortcut('summary')", "summary", show=False),
+        Binding("c", "shortcut('compare')", "compare", show=False),
         Binding("r", "refresh_now", "Refresh"),
         Binding("question_mark", "help", "Help"),
         Binding("q", "quit", "Quit"),
@@ -247,8 +272,21 @@ class InodeFenceTui(App[None]):
         images: Callable[[], Mapping[str, int] | None] | None = default_images,
         background: bool = True,
         clock: Callable[[], float] = time.time,
+        cli: Path | None = None,
+        launch_root: Path | None = None,
+        cwd: Path | None = None,
     ) -> None:
         super().__init__()
+        #: the ``inodefence`` to start (``None``: :func:`launch.find_cli`; tests give a fake one)
+        self._cli = cli
+        #: where launch records go (``None``: ``$XDG_STATE_HOME/inodefence/launches``)
+        self._launch_root = launch_root
+        #: the working folder commands start in (``--out`` resolves against it, as in a terminal)
+        self._cwd = cwd
+        #: commands this screen started, newest first (records under ``launch_root``)
+        self.launches: list[launch.Launch] = []
+        #: the first result chosen for ``c`` (compare), until a second one is chosen
+        self._compare_a: Path | None = None
         self.roots = [*(default_roots() if roots is None else roots), *extra]
         self.refresh_seconds = refresh
         self.follower = follower or RunFollower(roots=self.roots, interval=refresh, clock=clock)
@@ -385,6 +423,15 @@ class InodeFenceTui(App[None]):
         for key, snapshot in self.state.snapshots.items():
             model.observe(self.history.setdefault(key, []), snapshot)
         self.state.listings = discover_runs(self.roots, max_entries=2000)
+        # The follower keeps every run it ever read; a run seen only through its launcher log is
+        # replaced by its own folder once it writes one (a new key). Keep it only while the scan
+        # still lists it, so one run is never shown twice (QA, #553).
+        listed = {item.ref.key for item in self.state.listings if item.ref is not None}
+        self.state.snapshots = {
+            key: snap for key, snap in self.state.snapshots.items()
+            if snap.launcher_state is None or key in listed
+        }  # fmt: skip
+        launch.reap()  # collect commands this screen started that have ended (no zombies)
         self.state.now = self._clock()
         self.redraw()
 
@@ -528,6 +575,176 @@ class InodeFenceTui(App[None]):
             self.selected_key = keys[row]  # the panels follow the row the cursor is on
             self.draw_selection()
 
+    # -- run a command (the CLI, exactly as typed; nothing else) ---------------------------------
+
+    def _forms(self) -> dict[str, CommandForm]:
+        return command_forms(registry=self.state.targets)
+
+    def _workdir(self) -> Path:
+        return self._cwd or Path.cwd()
+
+    def _active_tab(self) -> str:
+        return str(self.query_one("#tabs", TabbedContent).active)
+
+    def _highlighted(self, table: str) -> str | None:
+        keys = self._row_keys.get(table, [])
+        cursor = self.query_one(f"#{table}-table", DataTable).cursor_row
+        return keys[cursor] if 0 <= cursor < len(keys) and keys[cursor] != "-" else None
+
+    def shortcut_preset(self, command: str) -> tuple[dict[str, Any] | None, str | None]:
+        """The form values a shortcut fills from the highlighted row, or ``(None, why not)``."""
+        if command in ("verify", "explore"):
+            target = self._highlighted("targets") if self._active_tab() == "targets" else None
+            if target is None:
+                return None, f"{command}: highlight a target in Targets (2)"
+            return {"target": target}, None
+        if command == "replay":
+            key = self.selected_key or ""
+            pair = next(((snap, row) for snap, row in model.findings(self.state)
+                         if model.finding_key(snap, row) == key), None)  # fmt: skip
+            if pair is None:
+                return None, "replay: highlight a flagged case in Flagged cases (4)"
+            snapshot, row = pair
+            if row.input_path is None:
+                return None, f"replay: {row.case_id} has no saved input to replay"
+            if (
+                snapshot.summary is not None
+                and snapshot.summary.result_path is not None
+                and (row.input_path.is_relative_to(snapshot.summary.result_path.parent))
+            ):
+                return {"case_dir": str(snapshot.summary.result_path.parent),
+                        "case": row.case_id}, None  # fmt: skip
+            return {"case_dir": str(row.input_path.parent)}, None  # a live run-NNNNNN folder
+        snapshot = self._selected_snapshot()
+        if snapshot is None:
+            return None, f"{command}: highlight a run first"
+        result = snapshot.summary.result_path if snapshot.summary is not None else None
+        if command == "status":
+            if snapshot.ref.kind.value != "explore":
+                return None, "status: shows an exploration (highlight one in Campaigns)"
+            return {"folder": str(snapshot.ref.root)}, None
+        if result is None:
+            return None, f"{command}: this run has no result file yet"
+        if command == "summary":
+            return {"result": str(result)}, None
+        if command == "compare":
+            first = self._compare_a
+            if first is None or first == result:
+                self._compare_a = result
+                return None, f"compare: A is {result.parent.name}; press c on another run's result"
+            self._compare_a = None
+            return {"a": str(first), "b": str(result)}, None
+        return None, f"{command}: no shortcut"
+
+    def action_shortcut(self, command: str) -> None:
+        preset, why = self.shortcut_preset(command)
+        if preset is None:
+            self.notify(why or command, title="shortcut")
+            return
+        self._open_form(self._forms(), command, preset)
+
+    def action_launches(self) -> None:
+        self.push_screen(
+            LaunchesScreen(lambda: launch.list_launches(self._launch_root)), self._go_to_folder
+        )
+
+    def _go_to_folder(self, folder: str | None) -> None:
+        """Enter on a command in "my commands": highlight the run written under its ``--out``."""
+        if folder is None:
+            self.notify("no --out: the run is under the CLI's default folder (see doctor)")
+            return
+        target = Path(folder).resolve()
+        for key, snapshot in self.state.snapshots.items():
+            if Path(snapshot.ref.root).resolve() == target:
+                self.selected_key = key
+                self.action_show(
+                    "campaigns" if snapshot.ref.kind.value == "explore" else "artifacts"
+                )
+                self.draw_selection()
+                return
+        self.notify(f"{folder}: no run read there yet (it appears once it writes)")
+
+    def action_new_command(self) -> None:
+        forms = self._forms()
+        self.push_screen(CommandPicker(forms), lambda name: self._open_form(forms, name))
+
+    def _open_form(
+        self, forms: Mapping[str, CommandForm], name: str | None, preset: Mapping[str, Any] = {}
+    ) -> None:
+        if name is None or name not in forms:
+            return
+        form = forms[name]
+        targets = list(self.state.targets or ())
+        self.push_screen(
+            CommandFormScreen(form, targets=targets, preset=preset),
+            lambda result: self._filled(form, result),
+        )
+
+    def _filled(self, form: CommandForm, result: tuple[list[str], dict[str, Any]] | None) -> None:
+        if result is None:
+            return
+        argv, values = result
+        cwd = self._workdir()
+        try:
+            program = self._cli or launch.find_cli()
+        except launch.CommandNotFound as error:
+            self.notify(str(error), title="nothing started", severity="error")
+            return
+        if not form.starts_docker:  # runs nothing: waited for, output shown as printed
+            self.run_worker(lambda: self._run_waited(argv, cwd, program), thread=True)
+            return
+        running = [s.ref.target for s in self.state.snapshots.values()
+                   if model.is_active(s, self.state.now)]  # fmt: skip
+        notes = confirm_notes(form, values, cwd=cwd, roots=self.roots, running_targets=running)
+        budget = values.get("budget")
+        reconfirm = str(budget).isdigit() and int(str(budget)) > BUDGET_RECONFIRM
+        plan = (
+            (lambda: launch.run_plan(argv, cwd=cwd, executable=program))
+            if form.has_dry_run
+            else None
+        )
+        self.push_screen(
+            ConfirmScreen(argv, cwd=cwd, program=str(program), notes=notes, plan=plan,
+                          reconfirm=reconfirm),
+            lambda start: self._start(argv, values, cwd, program) if start else None,
+        )  # fmt: skip
+
+    def _run_waited(self, argv: list[str], cwd: Path, program: Path) -> None:
+        code, output = launch.run_waited(argv, cwd=cwd, executable=program)
+        tail = "exit ? (no answer in time)" if code is None else f"exit {code}"
+        self.call_from_thread(self.push_screen, OutputScreen(argv, f"{output.rstrip()}\n\n{tail}"))
+
+    def _start(self, argv: list[str], values: Mapping[str, Any], cwd: Path, program: Path) -> None:
+        try:
+            started = launch.start(argv, cwd=cwd, root=self._launch_root, executable=program)
+        except (OSError, ValueError) as error:
+            self.notify(
+                f"{type(error).__name__}: {error}", title="nothing started", severity="error"
+            )
+            return
+        self.launches.insert(0, started)
+        out = out_folder(values, cwd)
+        if out is not None and not any(
+            out.resolve().is_relative_to(Path(root).expanduser().resolve()) for root in self.roots
+        ):
+            self._add_session_root(out)
+        self.notify(" ".join(argv), title="started · l: my commands (keeps running if this closes)")
+
+    def _add_session_root(self, folder: Path) -> None:
+        """Scan ``folder`` too, for this session only (decided 2026-11-20): a new follower over the
+        longer list replaces the old one; later sessions do not scan it on their own."""
+        self.roots.append(folder)
+        self.state.roots = tuple(self.roots)
+        old = self.follower
+        self._subscription.close()
+        old.stop(timeout=2)
+        self.follower = RunFollower(
+            roots=self.roots, interval=self.refresh_seconds, clock=self._clock
+        )
+        self._subscription = self.follower.subscribe()
+        if self._background:
+            self.follower.start()
+
     def action_refresh_now(self) -> None:
         self.follower.poll_once()
         self.tick()
@@ -539,6 +756,12 @@ class InodeFenceTui(App[None]):
             ("↑ ↓ / j k", "move in a list; the panels follow the highlighted run"),
             ("enter", "candidate detail, or the artifacts of a run"),
             ("esc", "close a detail"),
+            ("n", "run a command: pick, fill, confirm"),
+            ("l", "my commands: what this screen started, its state and output"),
+            ("v / e", "Targets: verify / explore the highlighted target"),
+            ("p", "Flagged cases: replay the highlighted case"),
+            ("s / m", "a run: its status / its result's summary"),
+            ("c", "compare: press on one run's result, then on another"),
             ("r", "re-read now"),
             ("q", "quit"),
         ):
@@ -599,7 +822,7 @@ def header_text(state: DashboardState, selected: RunSnapshot | None, now: float)
 
 
 def status_line(state: DashboardState, width: int) -> Text:
-    out = Text("read-only · reads existing run folders", style=PALETTE["muted"])
+    out = Text("reads existing run folders · n: run a command", style=PALETTE["muted"])
     if state.roots:
         roots = " · ".join(str(root) for root in state.roots)
         room = max(width - len(out) - 14, 10)
@@ -858,7 +1081,7 @@ def events_view(events: Sequence[UiEvent], height: int, width: int = 0) -> Text:
     event is one line, cut with ``…`` to ``width`` (0: no limit)."""
     collapsed = model.collapse_events(events)[-height:]
     if not collapsed:
-        return Text(model.READ_ONLY_NOTE, style=PALETTE["muted"])
+        return Text(model.SCREEN_NOTE, style=PALETTE["muted"])
     widths = model.EVENT_WIDTHS
     lines = []
     for event, repeats in collapsed:

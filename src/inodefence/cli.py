@@ -232,7 +232,8 @@ def _verify_screen(out: Path, started: float) -> None:
 
 
 def cmd_tui(args: argparse.Namespace) -> int:
-    """The read-only terminal dashboard (optional ``tui`` extra). 3 when it cannot start."""
+    """The terminal dashboard (optional ``tui`` extra): reads the run folders and runs an
+    ``inodefence`` command only when the user chooses one. 3 when it cannot start."""
     if args.refresh <= 0:
         print("error: --refresh must be > 0", file=sys.stderr)
         return 3
@@ -726,10 +727,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     tui = sub.add_parser(
         "tui",
-        help="read-only full-screen dashboard of the runs on this host (optional 'tui' extra)",
+        help="full-screen dashboard of the runs on this host; runs CLI commands on request "
+        "(optional 'tui' extra)",
         epilog="exit codes: 0 quit, 3 not started (no Textual, not an interactive terminal, "
         "bad --refresh). Reads the default explore/verify output folders plus FOLDER ...; "
-        "starts, stops, deletes and writes nothing.",
+        "runs an inodefence command only when you choose one (verify, explore and replay only "
+        "after Start); stops and deletes nothing.",
     )
     tui.add_argument("folders", nargs="*", type=Path, metavar="FOLDER", help="extra folders")
     tui.add_argument(

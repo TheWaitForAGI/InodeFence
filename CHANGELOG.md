@@ -27,9 +27,11 @@
 - 대화형 터미널(선택 설치 `ui`)에서 `status`는 결과 표, `summary`는 마크다운을 그려서 보여 준다. `--plain`, 파이프,
   `-o`는 지금의 텍스트 그대로다. `explore`의 진행 화면도 같은 디자인(실행 막대, 카드, 종료 상태 막대, 끝의 결과 패널)이고,
   마지막 진행 줄은 그대로 마지막에 남는다.
-- `inodefence tui [FOLDER ...] [--refresh 초]`: 이 호스트의 실행 폴더를 읽기 전용으로 보는 터미널 대시보드
-  (Overview·Targets·Campaigns·Flagged cases·Artifacts 탭). 선택 설치 `tui`가 없거나 대화형 터미널이 아니면 한 줄과
-  종료 3. [USAGE](docs/USAGE.md#터미널-대시보드tui)
+- `inodefence tui [FOLDER ...] [--refresh 초]`: 이 호스트의 실행 폴더를 보는 터미널 대시보드. 고른 경우에만
+  `inodefence` 명령을 실행한다(`n`; `verify`·`explore`·`replay`는 확인 창의 Start 뒤에만, 2000 초과 예산은 Start 두 번,
+  닫아도 실행은 계속되고 중지·삭제는 없음, 기록은 `$XDG_STATE_HOME/inodefence/launches/`). 탭은
+  Overview·Targets·Campaigns·Flagged cases·Artifacts. 선택 설치 `tui`가 없거나 대화형 터미널이 아니면 한 줄과
+  종료 3. 웹 대시보드는 그대로 읽기 전용이다. [USAGE](docs/USAGE.md#터미널-대시보드tui)
 - `inodefence compare A B`: 두 결과를 케이스별로 나란히 보여 준다. 양쪽에 기록된 입력 SHA-256이 같을 때만
   "same", 엄격한 읽기가 거절한 결과는 "as stored"와 이유를 붙인다. `verify`·`replay`는 대화형 터미널에서만 드라이버의
   줄 뒤에 이 실행이 쓴 결과의 화면을 덧붙이고, 파이프·파일 출력은 그대로다. [USAGE](docs/USAGE.md#두-결과-대조compare)

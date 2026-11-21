@@ -10,8 +10,10 @@ resolves it against its own last scan, so no path is ever accepted from the clie
 from __future__ import annotations
 
 import asyncio
+import sys
 import threading
 import time
+import traceback
 from collections.abc import Callable, Iterable
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -159,8 +161,16 @@ def _health_payload(cache: HealthCache) -> dict[str, Any]:
 
 
 def _run_error(exc: BaseException) -> str:
-    """Why one run could not be served (shown with ``read_state: unreadable`` for that run only)."""
-    return f"could not read this run: {type(exc).__name__}: {exc}"
+    """Why one run could not be served (shown with ``read_state: unreadable`` for that run only).
+
+    Also one line on the server's stderr with where it was raised: the page shows the reason for
+    that run, and the log keeps an unrelated bug from hiding behind it.
+    """
+    reason = f"could not read this run: {type(exc).__name__}: {exc}"
+    frames = traceback.extract_tb(exc.__traceback__)
+    where = f" at {Path(frames[-1].filename).name}:{frames[-1].lineno}" if frames else ""
+    print(f"inodefence dashboard: {reason}{where}", file=sys.stderr, flush=True)
+    return reason
 
 
 def _listing_payload(listing: runs_app.RunListing) -> dict[str, Any]:

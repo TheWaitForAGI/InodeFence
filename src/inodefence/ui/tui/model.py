@@ -349,7 +349,9 @@ def progress_bar(runs: int | None, budget: int | None, width: int = BAR_WIDTH) -
 
 
 EMPTY_TITLE = "no run folders found"
-EMPTY_HINT = "make a run: inodefence explore --target node-tar --version 7.5.2 --auto-prepare"
+EMPTY_HINT = (
+    "make a run: press n, or inodefence explore --target node-tar --version latest --auto-prepare"
+)
 
 
 def is_empty(state: DashboardState) -> bool:
@@ -409,7 +411,11 @@ def overview_rows(state: DashboardState) -> list[Row]:
     return [Row(label, (Cell(label), value, Cell(src, DIM))) for label, value, src in rows]
 
 
-READ_ONLY_NOTE = "read-only · reads existing run folders · starts, stops and deletes nothing"
+#: What this screen does, said where it is always visible (the events panel, the scan lines).
+SCREEN_NOTE = (
+    "reads existing run folders · runs a command only when you choose on"
+    "e (one that starts Docker only after Start) · stops and deletes nothing"
+)
 
 
 def replay_breakdown(state: DashboardState) -> str:
@@ -433,7 +439,7 @@ def replay_breakdown(state: DashboardState) -> str:
 
 
 def scanned_lines(state: DashboardState) -> list[str]:
-    return [READ_ONLY_NOTE, *(f"scanning {root}" for root in state.roots)]
+    return [SCREEN_NOTE, *(f"scanning {root}" for root in state.roots)]
 
 
 # -- targets ---------------------------------------------------------------------------------------

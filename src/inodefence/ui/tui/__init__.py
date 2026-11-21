@@ -1,4 +1,5 @@
-"""``inodefence tui``: a read-only full-screen dashboard of the runs on this host (Textual).
+"""``inodefence tui``: a full-screen dashboard of the runs on this host that can also run the CLI's
+commands, one that starts Docker only after a confirmation (Textual).
 
 Importing this package never imports Textual. :func:`run` does, and raises
 :class:`TuiUnavailable` (an :class:`ImportError`) with the install hint when it is missing, so the

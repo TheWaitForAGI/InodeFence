@@ -335,29 +335,42 @@ wheel로만 설치하면(클론 없음, `INODEFENCE_HOME` 없음) 대시보드�
 픽스처나 합성 진행 값으로 화면만 그려 본 것이고, 실제 추출기를 돌려 본 것이 아닙니다. 아래 결과(판정, 위반 수)는
 실행마다 다를 수 있으며, 여기 적은 화면 구성이 그 값을 보장하지 않습니다.
 
+TUI의 실행 기능은 테스트(`tests/test_tui_run.py`)와 개발 중 스크린숏에서 가짜 `inodefence`(실제 Docker 없음)로 확인했고, 검토자(QA)가 이 호스트의 Docker에서 **TUI로 실제 실행을 시작해** 확인했습니다(2026-11-20): node-tar `latest`(7.5.23으로
+해석)의 verify·explore와 7.5.2의 verify·explore. TUI가 띄운 실행의 `result.json`은 CLI로 띄운 것과 시각·경로 필드를 빼면
+같았습니다(7.5.2의 verify·explore에서 대조). explore는 `--auto-prepare`(또는 `--dry-run`) 없이 시작하면 이미지가 준비돼
+있어도 CLI가 종료 3으로 거부하고 Docker 실행은 없었습니다.
+replay는 위반 후보가 없어 실제로 돌리지 않았습니다(가짜 `inodefence`로만 확인).
+
 1. **환경 점검과 대상 목록.** `inodefence doctor`, `inodefence targets`
    - 화면: 브랜드 머리줄, 상태 카드(OK·WARN·FAIL·UNKNOWN), 구획(Environment·Storage·Docker·Development), 끝의 결과
      패널과 다음 명령. `targets`는 능력 카드와 대상 표입니다.
    - 필요한 것: Docker(이미지 칸이 채워지려면 준비된 이미지).
+   - TUI에서도: `n` → `doctor` 또는 `targets`(확인 없이 실행하고 출력을 보여 줌).
    - 확인: 실제 호스트의 pty에서 두 명령 모두 종료 0. 화면 구성은 가짜 Docker 응답으로도 확인.
 2. **node-tar 검사와 두 버전 대조.**
-   `inodefence verify --target node-tar --version 7.5.23 --auto-prepare --out out/verify-nt`
+   `inodefence verify --target node-tar --version latest --auto-prepare --out out/verify-nt`
    - 화면: 드라이버의 기존 줄 뒤에 이 실행이 쓴 셀의 결과 화면(판정, 위반 n/m, 케이스 표의 입력 SHA-256과 C0·C1·C2,
      증거 경로)이 붙습니다.
    - 두 버전을 나란히 보려면 다른 버전으로 한 번 더 verify한 뒤
      `inodefence compare <A의 result.json> <B의 result.json>`. 양쪽에 기록된 입력 SHA-256이 같은 케이스만 "same"입니다.
+     알려진 회귀를 보이는 대조는 `--version 7.5.2`와 `--version 7.5.3`입니다.
    - 필요한 것: Docker와 이미지(실제 실행).
-   - 확인: 합성(계약 픽스처와 그 사본). 실제 verify 뒤의 화면은 이 안내서에서 보지 않았습니다.
-3. **탐색.** `inodefence explore --target node-tar --version 7.5.23 --budget 40 --seed 123 --auto-prepare --out out/explore-nt`
+   - TUI에서도: Targets에서 대상을 고르고 `v` → 폼 → 확인 창의 Start. 두 결과는 결과 행에서 `c`, 다른 결과 행에서 `c`.
+   - 확인: CLI 결과 화면의 구성은 합성(계약 픽스처와 그 사본)으로 봤습니다. TUI에서 시작한 실제 verify(QA, 2026-11-20):
+     node-tar `latest`(7.5.23으로 해석)는 PASS, 7.5.2는 FAIL(위반 2/5, 알려진 회귀 픽스처). 최신 버전에서도 동작합니다.
+3. **탐색.** `inodefence explore --target node-tar --version latest --budget 40 --seed 123 --auto-prepare --out out/explore-nt`
    - 화면: 실행 막대(실행 수/예산), 카드(위반, 미판정, 처리량, 경과), 종료 상태 막대와 C0·C1·C2, ETA(추정)와 런처
      단계(런처 로그에서 읽음) 한 줄. 끝나면 마지막 화면, 결과 패널, 기존 마지막 줄이 남습니다.
    - python-tarfile·decompress·oras-go는 실행 중 수치가 없어(`?`) 막대 없이 단계만 보입니다.
    - 필요한 것: Docker와 이미지(실제 실행, 수 분).
-   - 확인: 합성 진행 값으로 그린 중간·끝 화면. 실제 탐색 중의 화면은 이 안내서에서 보지 않았습니다.
+   - TUI에서도: Targets에서 `e` → 폼 → 확인 창의 Start(예산이 2000을 넘으면 Start 두 번). TUI를 닫아도 탐색은 계속됩니다.
+   - 확인: CLI 진행 화면은 합성 진행 값으로 그린 중간·끝 화면을 봤습니다. TUI에서 시작한 실제 explore(QA, 2026-11-20):
+     node-tar 7.5.2(seed 123, 예산 20)는 PASS·위반 후보 0건, `latest`(7.5.23으로 해석)도 PASS.
 4. **상태와 요약.** `inodefence status out/explore-nt`,
    `inodefence summary out/explore-nt/target-explore/<실행>-result/result.json`
    - 화면: `status`는 판정 카드와 결과 표, `summary`는 같은 마크다운을 그린 것. 원래 글자는 `--plain`.
    - 필요한 것: 장면 3의 결과 폴더.
+   - TUI에서도: 실행 행에서 `s`(status)·`m`(summary).
    - 확인: 합성(계약 픽스처로 만든 결과 폴더).
 5. **위반 케이스 재실행.** 탐색 결과의 위반 케이스 폴더 하나를 `inodefence replay <케이스 폴더> --rounds 3`
    (케이스의 `case.json`에 그 명령이 그대로 있습니다. node-tar 탐색이면 끝 화면의 결과 패널에도 그 실행의
@@ -365,6 +378,7 @@ wheel로만 설치하면(클론 없음, `INODEFENCE_HOME` 없음) 대시보드�
    - 화면: 회차 표, 판정된 회차 가운데 같은 계약의 수(판정되지 않은 회차는 일치로 세지 않음), 결론 칩.
    - 필요한 것: **탐색이 위반을 찾은 실제 실행.** 저장소에는 결정적으로 위반을 내는 자료가 없고, 영상의 node-tar 탐색은
      위반이 없었습니다(그래서 영상의 장면 4-3은 거부 화면). 위반 케이스 없이 `replay`를 부르면 실행 전에 거부됩니다.
+   - TUI에서도: Flagged cases에서 케이스를 고르고 `p` → 확인 창의 Start(위반 후보가 있어야 함).
    - 확인: 합성 재실행 기록(`tests/app_synthetic.py`). 실제 위반 케이스의 3회 재실행 화면은 보지 않았습니다.
 6. **같은 폴더를 세 화면으로.** 위 폴더들을 한 번에:
    `inodefence tui out/explore-nt out/verify-nt`, `inodefence dashboard out/explore-nt out/verify-nt`(브라우저에서
@@ -468,11 +482,13 @@ inodefence tui                           # 기본 출력 폴더(탐색·verify)�
 inodefence tui ~/other-out --refresh 2   # 폴더를 더하고, 2초마다 다시 읽기
 ```
 
-`inodefence tui [폴더 ...] [--refresh 초]`는 이 호스트의 실행 폴더를 읽어 한 화면에 보여 주는 **읽기 전용**
-대시보드입니다. 선택 설치 `tui`(Textual 8 이상)가 필요합니다. Textual이 없거나, stdin·stdout이 대화형 터미널이
+`inodefence tui [폴더 ...] [--refresh 초]`는 이 호스트의 실행 폴더를 읽어 한 화면에 보여 주는 대시보드이고,
+**고른 경우에만** `inodefence` 명령을 실행합니다(아래 「TUI에서 명령 실행」). 화면 아래 줄의 문구 그대로: "reads existing
+run folders · runs a command only when you choose one (one that starts Docker only after Start) · stops and
+deletes nothing". 선택 설치 `tui`(Textual 8 이상)가 필요합니다. Textual이 없거나, stdin·stdout이 대화형 터미널이
 아니거나(파이프), `--refresh`가 0 이하이면 시작하지 않고 stderr에 한 줄(Textual이 없을 때는 설치 안내)을 쓰고 종료
-3입니다. `q`로 끝나면 0입니다. 같은 화면을 `python -m inodefence.ui.tui [폴더 ...]`로도 엽니다. 실행을 시작·중지·삭제하거나
-replay를 돌리는 조작은 없고, 아무 파일도 쓰지 않습니다. 기본으로 탐색·verify의 기본 출력 폴더
+3입니다. `q`로 끝나면 0입니다. 같은 화면을 `python -m inodefence.ui.tui [폴더 ...]`로도 엽니다. 실행을 중지하거나 지우는 조작은
+없습니다. 명령을 고르지 않으면 아무것도 실행하거나 쓰지 않습니다. 기본으로 탐색·verify의 기본 출력 폴더
 (`<출력 기준>/inodefence-explore`, `<출력 기준>/inodefence-target-run`)를 읽고, 인자로 준 폴더를 더 읽습니다.
 심볼릭 링크는 따라가지 않고 저장소 안은 읽지 않습니다. 읽는 위치는 화면(Overview 아래, 도움말)에 그대로 나옵니다.
 
@@ -492,6 +508,39 @@ replay를 돌리는 조작은 없고, 아무 파일도 쓰지 않습니다. 기�
 
 키: `1`–`5` 화면, `↑`/`↓` 행 이동, `Enter` 상세(위반 후보) 또는 그 실행의 Artifacts, `Esc` 닫기, `r` 다시 읽기,
 `?` 도움말, `q` 종료. 화면 아래 줄들은 실행 폴더의 변화를 이벤트로 보여 줍니다.
+
+### TUI에서 명령 실행
+
+TUI는 터미널에서 치는 것과 **똑같이 `inodefence <명령>`을 실행**합니다(같은 인자 검사, 같은 종료 코드, 같은
+`result.json`). 새 동작이 아니라 같은 명령을 화면에서 고르는 길입니다.
+
+- `n`: 명령 고르기("run a command"). Docker를 띄우는 셋(`verify`·`explore`·`replay`)과 읽기만 하는 다섯
+  (`doctor`·`targets`·`status`·`summary`·`compare`).
+- 폼(`inodefence <명령>`): CLI의 옵션에서 자동으로 만들어집니다(대상별 옵션은 그 대상일 때만). `*` 표시는 필수이고, 값은
+  CLI가 검사합니다("the CLI checks every value"). CLI가 거부하면 그 거부와 종료 코드가 그대로 보입니다.
+- 확인 창(`verify`·`explore`·`replay`만, 제목 "start <명령>? · starts Docker"): 명령 줄 전체와 실행할 폴더("in …"),
+  실행 파일("program …"). 기본 선택은 **Cancel**(아래에 "nothing runs until Start · esc: cancel"),
+  **Plan (--dry-run)**은 같은 명령을 `--dry-run`으로 돌려 계획만 보여 주고, **Start**가 실제로 시작합니다. 창에 함께
+  나오는 줄(화면 문구 그대로):
+  - `product run: its result is labelled "demo run" (or "exploratory demo run" for a version without a fixed lock) --
+    not a qualification or experiment result`
+  - 예산이 2000을 넘으면 `! budget <n> is above 2000: Start asks once more` — Start를 두 번 눌러야 시작합니다(상한
+    자체는 CLI의 규칙).
+  - `--verbose`를 고르면 `! --verbose shows the launcher's raw output and writes no launcher log: this run is not
+    on the screen until it ends`
+  - `--auto-prepare`면 `--auto-prepare may build the target's Docker image first`
+  - 화면이 읽는 폴더 밖의 `--out`이면 `! --out <폴더> is outside this screen's folders: added for this session
+    only (later: inodefence tui <폴더>)` — 그 세션에서만 보이고, 다음에는 `inodefence tui <폴더>`로 엽니다.
+- 읽기만 하는 다섯 명령은 확인 없이 실행하고 출력을 창에 보여 줍니다.
+- 탭의 단축키: Targets에서 `v`(verify)·`e`(explore)는 고른 대상으로, Flagged cases에서 `p`는 고른 케이스의
+  replay로, 실행 행에서 `s`(status)·`m`(summary), `c`를 한 실행의 결과에서 누르고 다른 실행에서 한 번 더 누르면 `compare`.
+  모두 같은 폼과 확인 창을 거칩니다.
+- `l`: 내가 띄운 명령("my commands") — 상태(`running`, 종료 코드와 그 뜻, 기록이 없으면 `ended (no exit code
+  recorded)`), 출력의 꼬리, 기록 위치. 기록은 `$XDG_STATE_HOME/inodefence/launches/`(기본
+  `~/.local/state/inodefence/launches/`)에 남고(소유자만 읽고 쓸 수 있게: 폴더 0700, 파일 0600) TUI가 지우지 않습니다.
+- **TUI를 닫아도 시작한 실행은 계속됩니다**(다른 터미널에서 띄운 명령과 같음). TUI에는 실행을 멈추거나 결과를 지우는
+  조작이 없습니다. 멈추려면 터미널에서 직접 합니다.
+- 웹 대시보드(`inodefence dashboard`)는 여전히 읽기 전용입니다.
 
 읽는 법:
 

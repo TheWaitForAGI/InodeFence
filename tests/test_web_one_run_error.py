@@ -66,7 +66,7 @@ def _break(monkeypatch: pytest.MonkeyPatch, where: str) -> None:
 
 @pytest.mark.parametrize("where", ["read", "serialise"])
 def test_one_failing_run_never_takes_the_lists_down(
-    two_runs: Path, monkeypatch: pytest.MonkeyPatch, where: str
+    two_runs: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], where: str
 ) -> None:
     _break(monkeypatch, where)
     client = TestClient(web.create_app(roots=[two_runs]))
@@ -98,6 +98,11 @@ def test_one_failing_run_never_takes_the_lists_down(
     artifacts = client.get(f"/api/artifacts/{broken_id}")
     assert artifacts.status_code == 200 and artifacts.json()["read_state"] == "unreadable"
     assert client.get(f"/api/runs/{good['id']}").json()["read_state"] == "ok"
+    # and the server's stderr has one line per caught error, with where it was raised
+    logged = [
+        line for line in capsys.readouterr().err.splitlines() if "inodefence dashboard" in line
+    ]
+    assert logged and all("synthetic" in line and " at " in line for line in logged)
 
 
 def test_without_failures_every_route_says_ok(two_runs: Path) -> None:

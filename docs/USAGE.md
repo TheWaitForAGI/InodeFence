@@ -763,9 +763,6 @@ make target-run TARGET=node-tar TARGET_VERSIONS="7.5.2 7.5.3" AUTO_PREPARE=1 PYT
 
 ## 한계와 주의
 
-- **모양이 틀린 `result.json`에서 `status`와 `summary`가 traceback을 낼 수 있습니다.** 예를 들어 `observed_contracts`가
-  수나 null이면 결과 읽기가 정해진 오류 대신 Python 예외를 내고 두 명령이 종료 1로 끝납니다. 이 동작은 이 PR 이전의 `main`과 같으며
-  [#552](https://github.com/TheWaitForAGI/InodeFence/issues/552)에서 다룹니다. 같은 파일에서 `compare`는 멈추지 않습니다.
 - **oras-go 탐색은 입력 이름을 `d/` 아래로 옮겨 보냅니다.** oras-go는 디렉터리 아티팩트를 제목 `d` 아래에 풀고 `d/`
   밖 이름은 추출 전에 거부합니다. 그래서 제품 탐색은 케이스는 그대로 두고, oras-go에 넘기는 TAR에서만 상대 경로 엔트리
   이름 앞에 `d/`를 붙입니다(절대 경로, 하드링크 대상, 심볼릭 링크 대상은 그대로). 판정의 추출 영역은 여전히 추출

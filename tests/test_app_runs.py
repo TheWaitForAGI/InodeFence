@@ -734,3 +734,24 @@ def test_a_broken_mode_in_an_exploration_keeps_its_candidates(tmp_path: Path) ->
     snapshot = runs.read_run(runs.RunRef(runs.RunKind.EXPLORE, out, rid))
     assert [r.case_id for r in snapshot.findings] == ["step-1"]
     assert snapshot.fixture_violations == () and snapshot.unclassified_violations == ()
+
+
+def test_a_non_string_case_id_the_strict_reader_accepts_does_not_crash_the_read(
+    tmp_path: Path,
+) -> None:
+    """#552: the strict reader lets a numeric case_id through on a non-violated case; the read model
+    must not raise on it (it has no run number), and compare must not raise either."""
+    data = json.loads(
+        (Path(__file__).parent / "fixtures" / "result-contract-v1" / "campaign.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    violated = set(data["violating_cases"])
+    index = next(i for i, c in enumerate(data["cases"]) if c["case_id"] not in violated)
+    data["cases"][index]["case_id"] = 7
+    path = tmp_path / "result.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+    summary = runs.read_result(path)
+    assert summary.read_state is ReadState.OK and summary.validated
+    assert 7 in [row.case_id for row in summary.cases]
+    assert runs.compare_results(summary, summary)  # rows built, nothing raised

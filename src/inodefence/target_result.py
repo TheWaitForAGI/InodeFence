@@ -928,8 +928,28 @@ def _keys_optional(
     return obj
 
 
+#: What a wrong-shaped value raises inside the strict reader before a check names it (a number
+#: where a list belongs, an object where a string belongs, ...). The reader reports these as
+#: :class:`TargetResultError` so a caller sees one kind of refusal, never a traceback (#552).
+_SHAPE_ERRORS = (TypeError, AttributeError, KeyError, IndexError, ValueError)
+
+
 def from_json_dict(data: object) -> TargetResult:
-    """Strict reader: exact keys, and the derived fields must match what the cases imply."""
+    """Strict reader: exact keys, and the derived fields must match what the cases imply.
+
+    A record this reader accepts is accepted exactly as before, and one it refuses is refused as
+    before; a value of the wrong shape that used to escape as ``TypeError`` (or a similar error) is
+    refused as :class:`TargetResultError`, naming the error.
+    """
+    try:
+        return _read(data)
+    except TargetResultError:
+        raise
+    except _SHAPE_ERRORS as error:
+        raise TargetResultError(f"malformed result: {type(error).__name__}: {error}") from error
+
+
+def _read(data: object) -> TargetResult:
     optional = (
         {"preparation", "campaign", "benign_control"} & set(data)
         if isinstance(data, Mapping)
@@ -1117,7 +1137,12 @@ def load_target_result(path: Path, *, verify_inputs: bool = True) -> TargetResul
     result = from_json_dict(json.loads(path.read_text(encoding="utf-8")))
     if verify_inputs:
         for item in result.repro_inputs:
-            tar = path.parent / item.tar_path
+            try:
+                tar = path.parent / item.tar_path
+            except TypeError as error:  # a tar_path that is not a string (#552)
+                raise TargetResultError(
+                    f"repro input path is not a string: {item.tar_path!r}"
+                ) from error
             if not tar.is_file():
                 raise TargetResultError(f"repro input missing: {item.tar_path}")
             if sha256(tar.read_bytes()).hexdigest() != item.tar_sha256:

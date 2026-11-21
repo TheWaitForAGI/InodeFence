@@ -592,8 +592,11 @@ def _row_from_verdict(
     )
 
 
-def _run_number(case_id: str) -> int | None:
-    """``step-N`` (an exploration case) -> ``N``; any other id has no run number."""
+def _run_number(case_id: object) -> int | None:
+    """``step-N`` (an exploration case) -> ``N``; any other id has no run number (also an id that
+    is not a string, which the strict reader lets through, #552)."""
+    if not isinstance(case_id, str):
+        return None
     head, _, tail = case_id.partition("-")
     return int(tail) if head == "step" and tail.isdigit() else None
 

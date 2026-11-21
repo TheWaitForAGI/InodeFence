@@ -77,6 +77,18 @@
 - 새 선택 키가 든 `result.json`은 이 버전 이상의 `inodefence status`·`summary`로 읽는다([호환 약속](docs/USAGE.md#호환-약속)).
 
 ### 고친 문제
+- 모양이 틀린 `result.json`에서 명령이 Python traceback과 종료 1로 끝나던 문제
+  ([#552](https://github.com/TheWaitForAGI/InodeFence/issues/552)). 결과 읽기나 요약이 쓰는 칸에 타입이 틀린 값(문자열이나
+  목록 자리에 수·배열·객체·null)이 있으면 그랬다:
+  - `status`와 `summary`: `observed_contracts`(목록이 아니거나 그 항목이 문자열이 아님), `provenance.engine_sha`,
+    `preparation`의 `*_sha256` 칸, `repro_inputs`의 `case_id`·`tar_path`·`tar_sha256`, 케이스의 `case_id`.
+  - `summary`만: 위에 더해 버전·이미지 칸, 케이스의 `outcome`, `preparation.producer_check`처럼 요약이 그리는 칸.
+  - `compare`: 탐색 결과의 케이스 `case_id`가 수일 때.
+  이제 `status`는 `<경로>: unreadable (malformed result: …)`와 종료 2, `summary`는 `error: malformed result: …`와 종료 2를
+  내고, `compare`는 그 케이스를 실행 번호 없이 보여 준다. 검토자의 시험(모양이 틀린 변형과 유효한 결과로 세 명령을 4552회)에서
+  traceback이 main의 303회에서 0회가 됐고 종료 코드는 0이나 2뿐이며, 바뀐 종료 코드는 모두 main에서 traceback이던 경우다.
+  지금 읽히는 결과는 전과 같게 읽히고(엄격 읽기가 받아들이는 범위와 거절 문구는 그대로), 판정·결과 형식·쓰는 쪽은 바뀌지
+  않는다.
 - `inodefence verify`·`explore`: `-`로 시작하는 `--image-tag-suffix`(예: `--image-tag-suffix=-win`)가 드라이버로 넘어가며
   두 인자로 나뉘어 실행 전에 거부되던 문제([#528](https://github.com/TheWaitForAGI/InodeFence/issues/528)). 이제 하나의
   값으로 전달된다. 공백 형식(`--image-tag-suffix -win`)은 여전히 받을 수 없고, 거부 메시지(종료 3)가 `=` 형식을 안내한다.
